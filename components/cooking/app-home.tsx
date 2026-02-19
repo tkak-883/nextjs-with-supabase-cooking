@@ -38,13 +38,13 @@ function cn(...xs: (string | false | undefined)[]) {
   return xs.filter(Boolean).join(" ");
 }
 
-function ymdToday() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
+//function ymdToday() {
+  //const d = new Date();
+  //const yyyy = d.getFullYear();
+  //const mm = String(d.getMonth() + 1).padStart(2, "0");
+  //const dd = String(d.getDate()).padStart(2, "0");
+  //return `${yyyy}-${mm}-${dd}`;
+//}
 
 function monthKeyOf(ymd: string) {
   return (ymd || "").slice(0, 7);
@@ -87,7 +87,7 @@ export default function AppHome() {
 
   // 支払い
   const [payCategory, setPayCategory] = useState("食材");
-  const [payDate, setPayDate] = useState(ymdToday());
+  const [payDate, setPayDate] = useState<string>("");
   const [payAmount, setPayAmount] = useState<string>("");
   const [payPayer, setPayPayer] = useState<"なつ" | "たか">("なつ");
   const [payForWhom, setPayForWhom] = useState<"なつ" | "たか" | "共有">("共有");
@@ -96,11 +96,11 @@ export default function AppHome() {
 
   // 精算表示
   const [settleTotal, setSettleTotal] = useState<number>(0);
-  const [settleMonthKey, setSettleMonthKey] = useState<string>(monthKeyOf(ymdToday()));
+  const [settleMonthKey, setSettleMonthKey] = useState<string>("");
   const settleMonthLabel = useMemo(() => settleMonthKey, [settleMonthKey]);
 
   // 使用（food.list）
-  const [useDate, setUseDate] = useState(ymdToday());
+  const [useDate, setUseDate] = useState<string>("");
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [useRows, setUseRows] = useState<{ item_id: string; useAmount: string }[]>([
     { item_id: "", useAmount: "" },
@@ -123,8 +123,26 @@ export default function AppHome() {
   const [addVolume, setAddVolume] = useState("");
   const [addUnit, setAddUnit] = useState("個");
   const [addRemain, setAddRemain] = useState("");
-  const [addPurchaseDate, setAddPurchaseDate] = useState(ymdToday());
+  const [addPurchaseDate, setAddPurchaseDate] = useState<string>("");
   const [addNote, setAddNote] = useState("");
+
+  useEffect(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+  
+    const today = `${yyyy}-${mm}-${dd}`;
+    const monthKey = `${yyyy}-${mm}`;
+  
+    if (!payDate) setPayDate(today);
+    if (!useDate) setUseDate(today);
+    if (!addPurchaseDate) setAddPurchaseDate(today);
+    if (!settleMonthKey) setSettleMonthKey(monthKey);
+  
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
 
   // --- 初期ロード（タブに応じて） ---
   useEffect(() => {
