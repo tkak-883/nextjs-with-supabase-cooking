@@ -114,6 +114,7 @@ export default function AppHome() {
 
   // 食材情報修正
   const [editId, setEditId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{ remain: number; volume: number; price: number; note: string } | null>(null);
 
   // 管理（manage.list）
   const [manageMonthKey, setManageMonthKey] = useState<string>("");
@@ -198,10 +199,8 @@ export default function AppHome() {
 
   async function loadSettle() {
     try {
-      // settle.get は monthKey じゃなく month/date のAPIに合わせて呼んでね
-      // ここは既に /api/settle/get が動いてる前提で、monthKey->month 変換はサーバ側任せでもOK
       const res = await apiGet<{ ok: boolean; total: number }>(
-        `/api/settle/get?monthKey=${encodeURIComponent(settleMonthKey)}`
+        `/api/settle/get?month=${encodeURIComponent(settleMonthKey)}`
       );
       setSettleTotal(Number(res.total) || 0);
     } catch {
@@ -744,30 +743,30 @@ export default function AppHome() {
                           {editId === it.item_id ? (
                             <div className="mt-3 grid gap-2">
                               <Input
-                                defaultValue={it.remain}
+                                value={String(editValues?.remain ?? "")}
                                 placeholder="残量"
-                                onChange={(e) => (it.remain = Number(e.target.value))}
+                                onChange={(e) => setEditValues((v) => v ? { ...v, remain: Number(e.target.value) } : v)}
                               />
                               <Input
-                                defaultValue={it.volume}
+                                value={String(editValues?.volume ?? "")}
                                 placeholder="内容量"
-                                onChange={(e) => (it.volume = Number(e.target.value))}
+                                onChange={(e) => setEditValues((v) => v ? { ...v, volume: Number(e.target.value) } : v)}
                               />
                               <Input
-                                defaultValue={it.amountPerUnit * (it.volume ?? 1)}
+                                value={String(editValues?.price ?? "")}
                                 placeholder="金額"
-                                onChange={(e) => (it.price = Number(e.target.value))}
+                                onChange={(e) => setEditValues((v) => v ? { ...v, price: Number(e.target.value) } : v)}
                               />
                               <Input
-                                defaultValue={it.note ?? ""}
+                                value={editValues?.note ?? ""}
                                 placeholder="備考"
-                                onChange={(e) => (it.note = e.target.value)}
+                                onChange={(e) => setEditValues((v) => v ? { ...v, note: e.target.value } : v)}
                               />
 
                               <div className="flex gap-2">
                                 <Button
                                   variant="outline"
-                                  onClick={() => setEditId(null)}
+                                  onClick={() => { setEditId(null); setEditValues(null); }}
                                 >
                                   キャンセル
                                 </Button>
@@ -778,11 +777,13 @@ export default function AppHome() {
                                     await apiPost("/api/food/manage/update", {
                                       owner: ownerDb,
                                       item_id: it.item_id,
-                                      volume: it.volume,
-                                      remain: it.remain,
-                                      note: it.note,
+                                      volume: editValues?.volume,
+                                      remain: editValues?.remain,
+                                      price: editValues?.price,
+                                      note: editValues?.note,
                                     });
                                     setEditId(null);
+                                    setEditValues(null);
                                     await loadManage();
                                     await loadFoods();
                                   }}
@@ -795,7 +796,15 @@ export default function AppHome() {
                             <Button
                               variant="outline"
                               className="h-9 rounded-2xl text-xs"
-                              onClick={() => setEditId(it.item_id)}
+                              onClick={() => {
+                                setEditId(it.item_id);
+                                setEditValues({
+                                  remain: it.remain ?? 0,
+                                  volume: it.volume ?? 1,
+                                  price: it.amountPerUnit * (it.volume ?? 1),
+                                  note: it.note ?? "",
+                                });
+                              }}
                             >
                               修正
                             </Button>
