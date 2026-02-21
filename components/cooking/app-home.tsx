@@ -716,8 +716,25 @@ export default function AppHome() {
 
                         {/* 後でdelete APIに繋ぐ */}
                         <div className="mt-2 flex gap-2">
-                          <Button variant="outline" className="h-9 rounded-2xl text-xs" disabled>
-                            選択削除（後で接続）
+                          <Button
+                            variant="outline"
+                            className="h-9 rounded-2xl text-xs"
+                            onClick={async () => {
+                              setManageOut("deleting...");
+                              try {
+                                await apiPost("/api/food/manage/delete", {
+                                  owner: ownerDb,
+                                  itemIds: [it.item_id],
+                                });
+                                await loadManage();
+                                await loadFoods();
+                                setManageOut("");
+                              } catch (e: any) {
+                                setManageOut(String(e?.message ?? e));
+                              }
+                            }}
+                          >
+                          削除
                           </Button>
                           <Button variant="outline" className="h-9 rounded-2xl text-xs" disabled>
                             修正（後で接続）
@@ -754,8 +771,25 @@ export default function AppHome() {
 
                         {/* 後でrestore APIに繋ぐ */}
                         <div className="mt-2">
-                          <Button variant="outline" className="h-9 w-full rounded-2xl text-xs" disabled>
-                            取消（復元）※後で接続
+                          <Button
+                          variant="outline"
+                          className="h-9 w-full rounded-2xl text-xs"
+                          onClick={async () => {
+                              setManageOut("restoring...");
+                              try {
+                              await apiPost("/api/food/manage/restore", {
+                                  owner: ownerDb,
+                                  itemId: it.item_id,
+                              });
+                              await loadManage();
+                              await loadFoods();
+                              setManageOut("");
+                              } catch (e: any) {
+                              setManageOut(String(e?.message ?? e));
+                              }
+                          }}
+                          >
+                          取消（復元）
                           </Button>
                         </div>
                       </div>
