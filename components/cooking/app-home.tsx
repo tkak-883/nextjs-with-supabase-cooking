@@ -21,10 +21,13 @@ type ManageItem = {
   item_id: string;
   unit: string;
   remain?: number;
+  volume?: number;
   amountPerUnit: number;
   purchaseDate?: string;
   deleteDate?: string;
   monthKey?: string;
+  note?: string;
+  price?: number;
 };
 
 const TABS: { key: TabKey; label: string; emoji: string }[] = [
@@ -108,6 +111,9 @@ export default function AppHome() {
     { item_id: "", useAmount: "" },
   ]);
   const [useOut, setUseOut] = useState<string>("");
+
+  // 食材情報修正
+  const [editId, setEditId] = useState<string | null>(null);
 
   // 管理（manage.list）
   const [manageMonthKey, setManageMonthKey] = useState<string>("");
@@ -714,7 +720,6 @@ export default function AppHome() {
                           {fmtYmd(it.purchaseDate)}
                         </div>
 
-                        {/* 後でdelete APIに繋ぐ */}
                         <div className="mt-2 flex gap-2">
                           <Button
                             variant="outline"
@@ -736,9 +741,65 @@ export default function AppHome() {
                           >
                           削除
                           </Button>
-                          <Button variant="outline" className="h-9 rounded-2xl text-xs" disabled>
-                            修正（後で接続）
-                          </Button>
+                          {editId === it.item_id ? (
+                            <div className="mt-3 grid gap-2">
+                              <Input
+                                defaultValue={it.remain}
+                                placeholder="残量"
+                                onChange={(e) => (it.remain = Number(e.target.value))}
+                              />
+                              <Input
+                                defaultValue={it.volume}
+                                placeholder="内容量"
+                                onChange={(e) => (it.volume = Number(e.target.value))}
+                              />
+                              <Input
+                                defaultValue={it.amountPerUnit * (it.volume ?? 1)}
+                                placeholder="金額"
+                                onChange={(e) => (it.price = Number(e.target.value))}
+                              />
+                              <Input
+                                defaultValue={it.note ?? ""}
+                                placeholder="備考"
+                                onChange={(e) => (it.note = e.target.value)}
+                              />
+
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => setEditId(null)}
+                                >
+                                  キャンセル
+                                </Button>
+
+                                <Button
+                                  className="bg-emerald-600 hover:bg-emerald-700"
+                                  onClick={async () => {
+                                    await apiPost("/api/food/manage/update", {
+                                      owner: ownerDb,
+                                      item_id: it.item_id,
+                                      volume: it.volume,
+                                      remain: it.remain,
+                                      note: it.note,
+                                    });
+                                    setEditId(null);
+                                    await loadManage();
+                                    await loadFoods();
+                                  }}
+                                >
+                                  保存
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              className="h-9 rounded-2xl text-xs"
+                              onClick={() => setEditId(it.item_id)}
+                            >
+                              修正
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -769,7 +830,6 @@ export default function AppHome() {
                           {fmtYmd(it.purchaseDate)}
                         </div>
 
-                        {/* 後でrestore APIに繋ぐ */}
                         <div className="mt-2">
                           <Button
                           variant="outline"
