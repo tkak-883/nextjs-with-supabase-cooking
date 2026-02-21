@@ -1,0 +1,435 @@
+最高。
+ここまで来たら **もうプロダクト移行フェーズ完了レベル**。
+
+あなたが将来見ても迷わないように、
+**Supabase + Next.js版 食材精算アプリ 引き継ぎ資料 v1** を整理する。
+
+---
+
+# 📘 食材精算アプリ 引き継ぎ資料（Supabase移行版）
+
+---
+
+# 1️⃣ プロジェクト概要
+
+## 目的
+
+2人（なつ・たか）の
+
+* 食材管理
+* 使用金額計算
+* 支払い記録
+* 月次精算
+
+をLINEミニアプリ想定UIで管理する。
+
+---
+
+## 技術構成
+
+| 項目   | 技術                      |
+| ---- | ----------------------- |
+| フロント | Next.js 16 (App Router) |
+| UI   | Tailwind + shadcn       |
+| DB   | Supabase (PostgreSQL)   |
+| API  | Next.js Route Handlers  |
+| デプロイ | Vercel                  |
+| 認証   | 現在なし（Admin Client使用）    |
+
+---
+
+# 2️⃣ 現在完成している機能
+
+---
+
+## ✅ 支払い機能（payment）
+
+API:
+
+```
+/api/payment/add
+```
+
+実装済み：
+
+* 家計簿記録
+* settlementsテーブル更新
+* 月別精算計算
+* UIから送信OK
+* 月別表示OK
+
+---
+
+## ✅ 使用食材機能（use）
+
+API:
+
+```
+/api/food/use
+```
+
+実装済み：
+
+* 複数行使用入力
+* 小計自動計算
+* 残量更新
+* 0以下なら自動削除テーブルへ移動
+* settleDelta自動計算
+* UI更新OK
+
+---
+
+## ✅ 食材追加（manage/add）
+
+API:
+
+```
+/api/food/manage/add
+```
+
+実装済み：
+
+* item_id自動生成
+* amount_per_unit自動計算
+* 月キー保存
+* UIから追加OK
+
+---
+
+## ✅ 食材削除（manage/delete）
+
+API:
+
+```
+/api/food/manage/delete
+```
+
+実装済み：
+
+* food_deletedへ移動
+* delete_date保存
+* UI更新OK
+
+---
+
+## ✅ 食材復元（manage/restore）
+
+API:
+
+```
+/api/food/manage/restore
+```
+
+実装済み：
+
+* deleted → itemsへ戻す
+* delete_date削除
+* UI更新OK
+
+---
+
+## ✅ 食材修正（manage/update）
+
+API:
+
+```
+/api/food/manage/update
+```
+
+実装済み：
+
+* 残量更新
+* 内容量更新
+* 金額更新
+* 備考更新
+* amount_per_unit再計算
+* UI接続済み
+
+---
+
+# 3️⃣ DB構造（Supabase）
+
+## food_items
+
+| column          | 内容           |
+| --------------- | ------------ |
+| owner           | natsu / taka |
+| item_id         | ユニークID       |
+| name            | 具材名          |
+| price           | 総額           |
+| volume          | 内容量          |
+| unit            | 単位           |
+| remain          | 残量           |
+| amount_per_unit | 単価           |
+| purchase_date   | 購入日          |
+| month_key       | YYYY-MM      |
+| note            | 備考           |
+
+---
+
+## food_deleted
+
+| column          | 内容 |
+| --------------- | -- |
+| owner           |    |
+| item_id         |    |
+| name            |    |
+| price           |    |
+| volume          |    |
+| unit            |    |
+| amount_per_unit |    |
+| purchase_date   |    |
+| delete_date     |    |
+| month_key       |    |
+| note            |    |
+
+---
+
+## settlements
+
+| column     | 内容      |
+| ---------- | ------- |
+| month_key  | YYYY-MM |
+| delta      | 正負で記録   |
+| created_at |         |
+
+---
+
+# 4️⃣ UIの現在仕様
+
+## デザイン
+
+* 緑基調
+* 料理感
+* LINEっぽい軽量UI
+* モバイルファースト
+* 下部ナビ固定
+
+---
+
+## タブ構成
+
+| タブ  | 機能     |
+| --- | ------ |
+| 支払い | 家計簿＋精算 |
+| 使用  | 食材使用   |
+| 食材  | 管理     |
+| 精算  | 月別表示   |
+
+---
+
+## 修正機能のUI動作
+
+* 修正ボタン押下
+* editIdセット
+* Input表示
+* 保存でAPI呼び出し
+* reload
+
+現在の実装は安定動作。
+
+---
+
+# 5️⃣ 未実装 / 今後やるべきこと
+
+---
+
+## 🔴 重要度高
+
+### ① RLS（セキュリティ）
+
+今は admin client 使用
+
+→ 本番では危険
+
+必要：
+
+* RLS有効化
+* user_idカラム追加
+* LINEログイン連携
+
+---
+
+### ② LINE LIFF統合
+
+今はWebアプリ
+
+やること：
+
+* LIFF SDK導入
+* userId取得
+* Supabase auth連携
+* リッチメニュー接続
+
+---
+
+### ③ 自動30日削除処理
+
+今は未実装
+
+必要：
+
+* cron job
+* Supabase Edge Function
+* Vercel cron
+
+---
+
+## 🟡 中優先
+
+### ④ 食材検索UI改善
+
+今：
+
+```
+selectプルダウン
+```
+
+将来：
+
+* 検索可能ドロップダウン
+* Autocomplete
+* よく使う順表示
+
+---
+
+### ⑤ 精算履歴画面
+
+今：
+
+* 月合計のみ
+
+将来：
+
+* 月内の明細一覧
+
+---
+
+### ⑥ エラーハンドリング強化
+
+今：
+
+* try/catchのみ
+* toastなし
+
+改善：
+
+* Toast UI
+* optimistic update
+
+---
+
+## 🟢 低優先
+
+* PWA対応
+* アニメーション
+* ダークモード
+* 通知機能
+
+---
+
+# 6️⃣ 確認すべき点
+
+---
+
+## ⚠ owner の扱い
+
+UI：
+
+```
+なつ / たか
+```
+
+DB：
+
+```
+natsu / taka
+```
+
+APIで変換しているが、
+今後user_id化するなら廃止する。
+
+---
+
+## ⚠ 金額丸め
+
+今：
+
+```
+Math.round
+```
+
+会計仕様としてOKか確認。
+
+---
+
+## ⚠ remain < 0処理
+
+API側で0に丸めているが、
+精算との整合性を再確認。
+
+---
+
+## ⚠ 同時更新ロック
+
+GAS時代はLockServiceあり。
+
+Supabaseでは：
+
+* トランザクション利用が必要
+* 今は未対策
+
+---
+
+# 7️⃣ 現在の完成度評価
+
+| 項目     | 状態   |
+| ------ | ---- |
+| UX     | 8/10 |
+| 機能     | 9/10 |
+| セキュリティ | 4/10 |
+| 本番耐性   | 6/10 |
+
+---
+
+# 8️⃣ 次にやるべき最適ルート
+
+あなたの目的が
+
+> UX重視・小規模運用
+
+なら順番は：
+
+1. RLS導入
+2. LINE LIFF統合
+3. cron削除
+
+これで「完成版」。
+
+---
+
+# 9️⃣ GAS版との比較
+
+| 項目   | GAS    | Supabase版  |
+| ---- | ------ | ---------- |
+| 速度   | 遅い     | 爆速         |
+| 同時更新 | Lock必要 | DBトランザクション |
+| 保守性  | 低      | 高          |
+| 拡張性  | 低      | 高          |
+
+結論：
+
+✅ 移行は完全に正解。
+
+---
+
+# 🔥 次の質問
+
+ここからどうする？
+
+1️⃣ LINE完全統合までやる
+2️⃣ セキュリティを本番仕様にする
+3️⃣ UXを更に洗練する
+4️⃣ 一旦ここで完成扱いにする
+
+どこまで仕上げる？

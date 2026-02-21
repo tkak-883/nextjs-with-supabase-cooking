@@ -41,7 +41,13 @@ export async function GET(req: Request) {
       ok: true,
       owner: ownerParam,        // UI用（入力のまま返す）
       owner_db: owner,          // デバッグ用
-      items: data ?? [],
+      items: (data ?? []).map((r) => ({
+        name: r.name,
+        item_id: r.item_id,
+        unit: r.unit,
+        remain: r.remain,
+        amountPerUnit: r.amount_per_unit,
+      })),
     });
   } catch (err: any) {
     console.error(err);

@@ -29,10 +29,20 @@ export async function POST(req: Request) {
 
       if (e1) throw e1;
 
-      await supabase.from("food_deleted").insert({
-        ...item,
+      const { error: e2 } = await supabase.from("food_deleted").insert({
+        owner: item.owner,
+        item_id: item.item_id,
+        name: item.name,
+        price: item.price,
+        volume: item.volume,
+        unit: item.unit,
+        amount_per_unit: item.amount_per_unit,
+        purchase_date: item.purchase_date,
+        month_key: item.month_key,
+        note: item.note,
         delete_date: new Date().toISOString(),
       });
+      if (e2) throw e2;
 
       await supabase
         .from("food_items")

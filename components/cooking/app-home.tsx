@@ -774,18 +774,22 @@ export default function AppHome() {
                                 <Button
                                   className="bg-emerald-600 hover:bg-emerald-700"
                                   onClick={async () => {
-                                    await apiPost("/api/food/manage/update", {
-                                      owner: ownerDb,
-                                      item_id: it.item_id,
-                                      volume: editValues?.volume,
-                                      remain: editValues?.remain,
-                                      price: editValues?.price,
-                                      note: editValues?.note,
-                                    });
-                                    setEditId(null);
-                                    setEditValues(null);
-                                    await loadManage();
-                                    await loadFoods();
+                                    try {
+                                      await apiPost("/api/food/manage/update", {
+                                        owner: ownerDb,
+                                        item_id: it.item_id,
+                                        volume: editValues?.volume,
+                                        remain: editValues?.remain,
+                                        price: editValues?.price,
+                                        note: editValues?.note,
+                                      });
+                                      setEditId(null);
+                                      setEditValues(null);
+                                      await loadManage();
+                                      await loadFoods();
+                                    } catch (e: any) {
+                                      setManageOut(String(e?.message ?? e));
+                                    }
                                   }}
                                 >
                                   保存

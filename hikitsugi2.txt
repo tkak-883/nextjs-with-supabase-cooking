@@ -1,0 +1,337 @@
+---
+
+# 引き継ぎ資料：GAS「食材精算」Webアプリ（LIFF想定）
+
+## 0. 目的（何を作っているか）
+
+* 2人（なつ・たか）の共同生活で
+
+  * **支払い**を家計簿に記録し、
+  * **食材の在庫管理（残量・単価）**と
+  * **使用した食材の精算**（なつ↔たかの貸し借り）を自動計算する
+* GAS Webアプリとして動かし、将来的に LIFF（LINE）から開く前提
+
+  * ただし **デプロイごとにURLが変わるのが面倒**なので、LIFF/リッチメニューは完成後に仕上げる方針
+
+---
+
+## 1. 構成（ファイルとページ）
+
+### ファイル
+
+* **Code.gs**
+
+  * `doGet` で `index.html` をテンプレートとして返す
+  * `api(req)` を単一エンドポイントにして action でルーティング
+* **index.html**
+
+  * `?page=xxx` で表示ページを切替
+  * `google.script.run.api({action, payload})` でGAS側API呼び出し
+
+### 画面（ページ）
+
+| page    | 用途                                   |
+| ------- | ------------------------------------ |
+| home    | 確認用（今表示してるページ表示＋pingカード）             |
+| payment | 支払い入力 + その下に「今月の精算（月切替）」表示           |
+| use     | 使用食材入力（複数行）+ 合計 + 送信 + 結果表示          |
+| manage  | 食材管理（一覧/削除/復元/追加/月フィルタ）              |
+| settle  | 精算表示（簡易版・日付から当月） ※payment内にも精算を埋め込み済 |
+
+---
+
+## 2. 参照するスプレッドシート（SS_ID）
+
+Code.gs 内 `SS_ID` に4つのスプレッドシートIDを設定済み。
+
+* `food`：食材管理（在庫）
+* `settle`：食材その他精算（貸し借り集計）
+* `kakeiboNatsu`：家計簿_なつ
+* `kakeiboTaka`：家計簿_たか
+
+---
+
+## 3. スプレッドシートのデータ構造（重要）
+
+### 3-1. food スプレッドシート
+
+シート名：
+
+* `なつ`
+* `たか`
+* `なつ_最近削除`
+* `たか_最近削除`
+
+#### メイン（なつ/たか）列（A〜I）
+
+A 具材名
+B item_id
+C 内容量
+D 金額
+E 単位
+F 単価（= 金額/内容量）
+G 残量
+H 購入日
+I 備考
+
+#### 最近削除（なつ_最近削除 / たか_最近削除）列（A〜I）
+
+A 具材名
+B item_id
+C 内容量
+D 金額
+E 単位
+F 単価
+G 購入日
+H 削除日
+I 備考
+
+※ 使い切り or 削除でここへ移動
+※ `cleanupOldDeleted_` で **削除日が30日超**の行は消す仕様
+
+---
+
+### 3-2. settle スプレッドシート（食材その他精算）
+
+月ごとにシート：
+
+* `2026年1月`, `2026年2月`, ...（この形式で統一）
+
+各月シートのセル：
+
+* A1: `なつ→たかの貸し`
+* B1: `合計`
+* B2: `=ROUND(SUM(A2:A),0)`（合計額）
+
+A列（A2以降）に **delta（貸し借り）** を追記する。
+
+* B2 が「その月の最終的な貸し借り」
+
+---
+
+## 4. GAS側API設計（api(req)）
+
+`api(req)` は **try/catch** で `{ok:false, error:...}` 返す。
+
+### action一覧（現状）
+
+* `ping`
+* `payment.add`
+* `food.list`
+* `food.use`
+* `settle.get`
+* `settle.months`
+* `food.manage.list`
+* `food.manage.add`
+* `food.manage.delete`
+* `food.manage.restore`
+* `food.manage.update`（任意：UI未使用でもOK）
+
+### 排他制御
+
+* 書き込み系は `withWriteLock_()` で ScriptLock を使用
+
+  * 例：`payment.add`, `food.use`, manageのadd/delete/restore/update
+
+---
+
+## 5. 機能仕様と計算ロジック
+
+## 5-1. 支払い（payment.add）
+
+入力：category/date/amount/payer/forWhom/note
+
+処理：
+
+1. payerに応じて、家計簿（kakeibo）へ「割り勘用」として追記
+2. forWhomに応じて、settle（月シートのA列）へ delta を追記
+
+### deltaの符号ルール（重要）
+
+* `なつ→たか`： +amount
+* `たか→なつ`： -amount
+* `なつ→共有`： +amount*0.5
+* `たか→共有`： -amount*0.5
+* 自分の家用（なつ→なつ / たか→たか）：0（記録しない）
+
+---
+
+## 5-2. 食材一覧取得（food.list）
+
+* `owner`（なつ or たか）のシートを読んで
+* `{name,item_id,amountPerUnit,remain,unit}` を返す
+* useページのプルダウン/残量表示に使用
+
+---
+
+## 5-3. 使用食材（food.use）
+
+payloadは **新旧互換**：
+
+* 新：`{date, owner, rows:[{item_id,useAmount}...]}`
+* 旧：`{date, owner, item_id, useAmount}`
+
+処理：
+
+* rowsを正規化（空行や0は除外）
+* 同じ item_id が複数ある場合は **合算**（誤操作防止）
+* 在庫シートの該当行を更新
+
+  * `remain - useAmount`
+  * `useAmount + eps >= remain` なら **使い切り扱い**
+
+    * 行を削除し、最近削除へ移動（削除日 now）
+* 削除済みの掃除：30日超は削除
+* 精算 delta を **まとめて1回だけ** `settle` に追記
+
+### 食材使用の精算 delta（符号）
+
+* ownerが「なつ」で使用 → **+0.5** ×（単価×使用量）
+* ownerが「たか」で使用 → **-0.5** ×（単価×使用量）
+
+返却：
+
+* `settleDeltaTotal` と `details[]`（各食材の処理詳細）
+
+---
+
+## 5-4. 食材管理（manage）
+
+### food.manage.list
+
+* owner + monthKey（例：`2026-02`）でフィルタ
+* mainとdeletedを読み、monthKeyで絞り込み
+* monthプルダウン用に、登場月一覧（`YYYY-MM`）も返す
+
+### food.manage.add
+
+* 具材を追加（末尾追記）
+* item_id は `genItemId_()` で生成
+* 単価は `price/volume`
+
+### food.manage.delete
+
+* 選択された item_id を main から消し、最近削除へ移動（削除日 now）
+
+### food.manage.restore
+
+* 最近削除から main に戻す
+* 戻すときの残量はユーザー入力
+
+---
+
+## 5-5. 精算表示（settle.get / settle.months）
+
+### settle.get
+
+* `{month:"2026年2月"}` があればそのシートのB2を返す
+* なければ `{date}` から `toMonthSheetName_()` で当月にしてB2を返す
+
+### settle.months
+
+* settleスプレッドシート内のシート名から
+
+  * `^\d{4}年\d{1,2}月$` のものだけ抽出して返す（新しい月が上）
+
+---
+
+## 6. index.html 側のUI実装ポイント（バグ修正履歴含む）
+
+### 6-1. useページが表示されない問題
+
+* `init()` 内で `loadFoods()` を呼んでいたが、
+* useページは新UI `loadFoodsUseUI()` を呼ぶ必要があり、これで解決
+
+### 6-2. 合計額が0のまま問題
+
+* 合計は `updateUseTotal_()` で **foodMap×入力値**から毎回再計算する方式
+* `oninput/onchange` で `updateRowInfo_()` + `updateUseTotal_()` を呼ぶ
+
+### 6-3. 初期表示行数を5行に統一
+
+* `resetUseRows_(5)` を初回ロード・送信後リセット時に呼ぶ仕様
+
+### 6-4. 送信後の「送信しました！」＋内訳＋合計表示
+
+* 送信前に `summaryLines` と `total` を作っておき、
+* successHandler で useResult に表示
+* その後 rows を 5行に戻し、在庫更新のため `loadFoodsUseUI()` 再取得
+
+### 6-5. 各行に「残量」を表示
+
+* food.list が返す remain を `foodMap` に入れて、
+* `updateRowInfo_()` で `remainLabel` に表示
+
+---
+
+## 7. 現状できている動作（確認済み）
+
+* GAS保存→Webアプリ最新版に再デプロイ
+* `?page=manage` で owner切替・一覧切替OK
+* manage：選択削除→現役から消える→最近削除に出る
+* manage：取消（復元）→残量入力→現役へ戻る
+* manage：食材追加→単価計算され追加される
+* use：複数行、合計計算、残量表示、送信後の結果表示とリセットOK
+* payment：支払い送信OK
+* payment：下部に「今月の精算」パネル表示、月プルダウン切替OK
+
+---
+
+## 8. 既知の注意点（次チャットでUI整理するときの地雷）
+
+1. **index.html内に util関数が重複定義されている**
+
+   * `escapeHtml_`, `round_` が2回登場している（後勝ち）
+   * UI整理時に必ず1箇所へ統合推奨
+
+2. 変数名の衝突・可読性
+
+   * `round_` が「3桁丸め」と「任意digits」の2種類が混在していた経緯あり
+
+3. useResult / useOut の役割
+
+   * `useResult`: 成功メッセージ表示
+   * `useOut`: デバッグ/エラー表示（成功時は空に戻している）
+
+---
+
+## 9. 次にやること（UI整理フェーズの進め方）
+
+UIを好みに整理するなら、次の順が安全：
+
+1. index.htmlのJSを「機能ごと」に分割（同一ファイル内でもOK）
+
+   * util
+   * payment
+   * use
+   * manage
+   * settle
+
+2. 重複utilを統合
+
+   * `escapeHtml_`, `num_`, `round_`, `round0_`, `ymdToday_`
+
+3. UIコンポーネントの整形
+
+   * カードの見た目、余白、ボタン配置などを変更しても
+   * **DOM id/data-role を維持**すればロジックは壊れにくい
+
+4. payment送信後に精算パネルを自動更新（任意）
+
+   * payment.add successHandler で `loadPaymentSettle()` を呼ぶなど
+
+---
+
+## 10. 次チャットに渡すもの
+
+* 最新の `index.html`
+* 最新の `code.gs`
+
+次チャットでは、この引き継ぎ資料を前提に：
+
+* UI整理（見た目の統一）
+* JS重複の整理
+* コンポーネント化（必要なら）
+  を進める。
+
+---

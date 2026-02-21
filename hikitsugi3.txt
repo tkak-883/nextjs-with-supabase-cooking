@@ -1,0 +1,249 @@
+---
+
+# 引き継ぎ資料：LIFF × GAS 食材精算アプリ（なつ・たか）
+
+## 1. 目的（作ろうとしているシステム）
+
+同居2人（なつ・たか）で、**食材購入・食材使用・精算**を自動化するミニアプリを作っている。
+
+### ゴール
+
+* **購入（payment）**：誰が払ったか、誰用か（なつ/たか/共有）を入力 →
+  **家計簿（家計簿_なつ/家計簿_たか）へ記録** + **精算（食材その他精算）へ貸し借り反映**
+* **使用（use）**：食材の使用量を複数行で入力 →
+  **食材管理シートの残量更新** + **使い切りなら最近削除へ移動** + **精算へ反映**
+* **管理（manage）**：現役食材の一覧・追加・削除（使い切り扱い）・復元・月フィルタ
+* **精算表示**：paymentページ内で「今月の精算」（指定月の合計）を表示
+
+### 将来（未実装）
+
+* LIFFでLINEログインし、ユーザーの **sub（userId）を取得**
+* GAS側でホワイトリスト判定し、許可ユーザーのみ操作可能にする（※現状はPCブラウザ開発優先で後回し）
+
+---
+
+## 2. 技術構成
+
+### フロント
+
+* GAS Webアプリ（`index.html`）
+* UI：カード型、上部ナビあり
+* GASテンプレート変数：`<?= page ?>`、`<?= scriptUrl ?>` を使用
+
+### バックエンド
+
+* Google Apps Script（`Code.gs`）
+* `google.script.run.api({action, payload})` 形式で呼ぶ統一API
+
+### データ（Googleスプレッドシート）
+
+`SS_ID` にIDを直書き（本番では環境変数化しても良い）
+
+* 食材管理：`SS_ID.food`
+
+  * シート：`なつ`, `たか`, `なつ_最近削除`, `たか_最近削除`
+* 食材その他精算：`SS_ID.settle`
+
+  * 月ごとシート（例：`2026年2月`）
+* 家計簿：`SS_ID.kakeiboNatsu`, `SS_ID.kakeiboTaka`
+
+  * 月ごとシート（例：`2026年2月`）
+
+---
+
+## 3. ここまでに完成したもの（機能一覧）
+
+## 3-1. Webアプリのエントリ（doGet）
+
+```js
+function doGet(e) {
+  const page = e?.parameter?.page ? e.parameter.page : "home";
+  const html = HtmlService.createTemplateFromFile("index");
+  html.page = page;
+  html.scriptUrl = ScriptApp.getService().getUrl(); // ★重要
+  return html.evaluate()
+    .setTitle("食材精算")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+```
+
+* `scriptUrl` をテンプレに渡すことで、**ナビ遷移が安定**（後述）
+
+---
+
+## 3-2. 統一API（action dispatch）
+
+`api(req)` で `req.action` に応じて処理を分岐。
+書き込み系は `withWriteLock_()` で排他制御。
+
+主要 action：
+
+* `ping`
+* `payment.add`
+* `food.list`
+* `food.use`
+* `settle.get`
+* `settle.months`
+* `food.manage.list / add / delete / restore / update(任意)`
+
+---
+
+## 3-3. payment（支払い登録）
+
+### 入力
+
+* category（食材/文具/家具・家電/その他）
+* date（YYYY-MM-DD）
+* amount
+* payer（なつ/たか）
+* forWhom（なつ/たか/共有）
+* note（任意）
+
+### 処理
+
+1. **家計簿に追記**
+
+* payerがなつ → 家計簿_なつ
+* payerがたか → 家計簿_たか
+* 記録の「購入品」は固定で `割り勘用`
+
+2. **精算シートに追記（A列にdelta）**
+   ルール（なつ→たかの貸しをプラスで管理）：
+
+* なつがたか用を支払う：`+amount`
+* たかがなつ用を支払う：`-amount`
+* 共有は半額：なつ→共有 `+0.5*amount` / たか→共有 `-0.5*amount`
+* 自分用は精算不要（0）
+
+### 月シート生成
+
+* 家計簿：見出し＋ `H1=月の初め`, `H2=残高`, `I2=I1 - SUM(C2:C)` をセット
+* 精算：`A1=なつ→たかの貸し`, `B1=合計`, `B2=ROUND(SUM(A2:A),0)`
+
+---
+
+## 3-4. use（使用食材の登録：複数行対応）
+
+### UI
+
+* 食材プルダウン（`food.list` で owner別に取得）
+* 使用量入力（複数行）
+* 合計額表示（フロントで計算）
+* 送信で `food.use`
+
+### サーバ処理（foodUse_）
+
+* rows を正規化（旧形式1行にも対応）
+* mainシート（owner）から item_id で対象行を特定
+* 残量更新：`remain - useAmount`
+* **使い切り**（useAmount ≧ remain）は
+
+  * 最近削除シートへ移動（削除日付を付与）
+  * main行削除
+* 削除シートの古いデータは 30日で掃除
+* 精算は合算して1回だけ append
+
+  * ownerがなつ：`+0.5 * 単価 * 使用量`
+  * ownerがたか：`-0.5 * 単価 * 使用量`
+
+---
+
+## 3-5. manage（食材管理）
+
+### できること
+
+* 現役食材一覧表示
+* 「選択・削除」モードで複数選択→削除（＝使い切り扱い、最近削除へ移動）
+* 最近削除一覧表示
+* 復元（残量指定して戻す）
+* 追加（promptで1件追加）
+* 月フィルタ（購入日から `YYYY-MM` キー生成し絞り込み）
+* **UI上では item_id を表示しない**（内部の操作は data-id で保持）
+
+---
+
+## 3-6. settle（精算表示）
+
+* `settle.months`：精算スプレッドシート内の `YYYY年M月` シート名一覧を返す（新しい月が上）
+* `settle.get`：月指定 or 日付指定で、対象月の `B2`（合計）を取得
+* paymentページ内の「今月の精算」で利用中
+
+※現在 `settleページ（別ページ）` 用のHTMLが残っているが、運用上は **paymentページに統合**する方向。
+
+---
+
+## 4. UI/ページ遷移の実装（今回安定した部分）
+
+### 背景
+
+`href="?page=payment"` などの相対リンクは、環境によって壊れたり `/?page=...` で Drive 404 に飛んだりした。
+→ **doGet で scriptUrl を渡し、JSで確実に遷移**する方式に変更し安定。
+
+### index.html（上部ナビ）
+
+```html
+<a class="navBtn" data-page="payment" href="#">支払い</a>
+<a class="navBtn" data-page="use" href="#">使用食材</a>
+<a class="navBtn" data-page="manage" href="#">食材管理</a>
+```
+
+### init() での遷移ロジック（重要）
+
+* `allowed` にない page は payment に倒す（白画面防止）
+* `baseUrl = "<?= scriptUrl ?>"` を使い、`baseUrl + "?page=..."` に遷移
+* iframe内（LIFF想定）なら `window.top` を変える
+
+```js
+const allowed = new Set(["payment","use","manage"]);
+if (!allowed.has(page)) page = "payment";
+
+document.querySelectorAll(".navBtn").forEach(a => {
+  if (a.dataset.page === page) a.classList.add("active");
+
+  a.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    const baseUrl = "<?= scriptUrl ?>";
+    const newUrl = baseUrl + "?page=" + a.dataset.page;
+
+    if (window.self !== window.top) window.top.location.href = newUrl;
+    else window.location.href = newUrl;
+  });
+});
+```
+
+---
+
+## 5. 現状の残タスク（次にやること）
+
+優先順で：
+
+1. **settleページ削除**（不要）
+
+   * HTMLの `settleCard` を消す
+   * init() の settle分岐削除
+   * `loadSettle()` を payment内の機能だけに整理（既にpayment側は month選択で動く）
+
+2. **ホワイトリスト判定（LIFF導入）**
+
+   * LIFFで userId(sub) を取得
+   * `api({action:"auth.check", payload:{sub}})` 的なAPIを追加
+   * GAS側でホワイトリスト（スプレッドシート or ハードコード）判定
+   * NGなら UI を操作不可にする（ページ表示時に弾く）
+
+3. UIの細部改善（任意）
+
+   * manageの追加フォームをpromptからフォーム化
+   * useの行UIをもう少し整える等
+
+---
+
+## 6. 動作確認手順（現状）
+
+* WebアプリURL（`.../exec`）にアクセス
+* `?page=payment` / `use` / `manage` の切替がナビで安定動作
+* `ping` が返る
+* payment→家計簿&精算に書き込みされる
+* use→残量更新＆精算追記＆使い切り移動
+* manage→一覧/削除/復元/追加/フィルタが動作
+
+---
