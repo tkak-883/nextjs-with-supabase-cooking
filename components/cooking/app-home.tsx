@@ -610,9 +610,14 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                   </select>
                 </Field>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-[auto_1fr] gap-2">
                   <Field label="日付">
-                    <Input value={payDate} onChange={(e) => setPayDate(e.target.value)} type="date" />
+                    <Input
+                      value={payDate}
+                      onChange={(e) => setPayDate(e.target.value)}
+                      type="date"
+                      className="w-[130px] px-2 text-sm"
+                    />
                   </Field>
                   <Field label="購入金額（円）">
                     <Input
