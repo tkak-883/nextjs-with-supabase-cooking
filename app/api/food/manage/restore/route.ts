@@ -14,9 +14,12 @@ export async function POST(req: Request) {
 
     const owner = toDbOwner(body?.owner);
     const itemId = body?.itemId;
+    const remain = body?.remain !== undefined ? Number(body.remain) : null;
 
     if (!owner) return NextResponse.json({ error: "owner invalid" }, { status: 400 });
     if (!itemId) return NextResponse.json({ error: "itemId required" }, { status: 400 });
+    if (remain !== null && (!Number.isFinite(remain) || remain < 0))
+      return NextResponse.json({ error: "remain invalid" }, { status: 400 });
 
     const { data: item, error } = await supabase
       .from("food_deleted")
@@ -35,7 +38,7 @@ export async function POST(req: Request) {
       price: item.price,
       unit: item.unit,
       amount_per_unit: item.amount_per_unit,
-      remain: item.volume, // 復元時はフル量でOK（後でUI調整可）
+      remain: remain !== null ? remain : item.volume,
       purchase_date: item.purchase_date,
       note: item.note,
     });

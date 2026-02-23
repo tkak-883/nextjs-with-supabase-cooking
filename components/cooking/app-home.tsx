@@ -148,6 +148,10 @@ export default function AppHome() {
   const [manageDeleted, setManageDeleted] = useState<ManageItem[]>([]);
   const [manageOut, setManageOut] = useState<string>("");
 
+  // 復元フォーム
+  const [restoreId, setRestoreId] = useState<string | null>(null);
+  const [restoreRemain, setRestoreRemain] = useState<string>("");
+
   // 追加フォーム（管理）
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -389,8 +393,8 @@ export default function AppHome() {
               🍲
             </div>
             <div>
-              <div className="text-sm font-extrabold tracking-tight">食材精算</div>
-              <div className="text-xs text-slate-500">ふたりの家計と冷蔵庫</div>
+              <div className="text-sm font-extrabold tracking-tight">ごはんと家計簿</div>
+              <div className="text-xs text-slate-500">おいしく食べる</div>
             </div>
           </div>
 
@@ -442,8 +446,8 @@ export default function AppHome() {
       <header className="sticky top-0 z-20 border-b bg-emerald-500 text-white shadow-sm md:hidden">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <div>
-            <div className="text-base font-extrabold">🍲 食材精算</div>
-            <div className="text-xs opacity-90">料理っぽく、軽く、サクサク</div>
+            <div className="text-base font-extrabold">🍲 ごはんと家計簿</div>
+            <div className="text-xs opacity-90">おいしく食べる</div>
           </div>
 
           <div className="flex items-center gap-2 rounded-2xl bg-white/15 px-2 py-1">
@@ -480,12 +484,7 @@ export default function AppHome() {
               <div className="mt-1 text-xs text-slate-500">月キー：{settleMonthLabel}</div>
             </div>
             <div className="flex items-center gap-2">
-              <Input
-                className="w-[120px] md:w-[160px]"
-                value={settleMonthKey}
-                onChange={(e) => setSettleMonthKey(e.target.value)}
-                placeholder="YYYY-MM"
-              />
+              <MonthPicker value={settleMonthKey} onChange={setSettleMonthKey} />
               <Button
                 className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
                 onClick={() => loadSettle()}
@@ -734,7 +733,7 @@ export default function AppHome() {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Card className="rounded-3xl border-emerald-100 bg-white/80 p-4">
                 <div className="mb-2 flex items-baseline justify-between">
-                  <div className="text-sm font-extrabold text-emerald-800">🟢 現役の食材</div>
+                  <div className="text-sm font-extrabold text-emerald-800">🟢 冷蔵庫の食材</div>
                   <div className="text-xs text-slate-500">{manageItems.length} 件</div>
                 </div>
 
@@ -882,26 +881,67 @@ export default function AppHome() {
                         </div>
 
                         <div className="mt-2">
-                          <Button
-                          variant="outline"
-                          className="h-9 w-full rounded-2xl text-xs"
-                          onClick={async () => {
-                              setManageOut("restoring...");
-                              try {
-                              await apiPost("/api/food/manage/restore", {
-                                  owner: ownerDb,
-                                  itemId: it.item_id,
-                              });
-                              await loadManage();
-                              await loadFoods();
-                              setManageOut("");
-                              } catch (e: any) {
-                              setManageOut(String(e?.message ?? e));
-                              }
-                          }}
-                          >
-                          取消（復元）
-                          </Button>
+                          {restoreId === it.item_id ? (
+                            <div className="grid gap-2">
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  className="h-9"
+                                  inputMode="decimal"
+                                  placeholder={`残量（${it.unit}）`}
+                                  value={restoreRemain}
+                                  onChange={(e) => setRestoreRemain(e.target.value)}
+                                />
+                                <span className="shrink-0 text-xs text-slate-500">{it.unit}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  className="h-8 flex-1 rounded-2xl text-xs"
+                                  onClick={() => { setRestoreId(null); setRestoreRemain(""); }}
+                                >
+                                  キャンセル
+                                </Button>
+                                <Button
+                                  className="h-8 flex-1 rounded-2xl bg-emerald-600 text-xs hover:bg-emerald-700"
+                                  onClick={async () => {
+                                    const remain = Number(restoreRemain);
+                                    if (!Number.isFinite(remain) || remain < 0) {
+                                      setManageOut("ERROR: 残量を正しく入力してください");
+                                      return;
+                                    }
+                                    setManageOut("restoring...");
+                                    try {
+                                      await apiPost("/api/food/manage/restore", {
+                                        owner: ownerDb,
+                                        itemId: it.item_id,
+                                        remain,
+                                      });
+                                      setRestoreId(null);
+                                      setRestoreRemain("");
+                                      await loadManage();
+                                      await loadFoods();
+                                      setManageOut("");
+                                    } catch (e: any) {
+                                      setManageOut(String(e?.message ?? e));
+                                    }
+                                  }}
+                                >
+                                  確定
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              className="h-9 w-full rounded-2xl text-xs"
+                              onClick={() => {
+                                setRestoreId(it.item_id);
+                                setRestoreRemain("");
+                              }}
+                            >
+                              取消（復元）
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1169,17 +1209,17 @@ function MonthPicker({
           <option key={y} value={String(y)}>{y}年</option>
         ))}
       </select>
-      {selectedYear && (
-        <select
-          className="rounded-2xl border px-3 py-2 text-sm"
-          value={selectedMonth}
-          onChange={(e) => handleMonth(e.target.value)}
-        >
-          {months.map((m) => (
-            <option key={m} value={m}>{Number(m)}月</option>
-          ))}
-        </select>
-      )}
+      <select
+        className="rounded-2xl border px-3 py-2 text-sm disabled:opacity-40"
+        value={selectedMonth}
+        disabled={!selectedYear}
+        onChange={(e) => handleMonth(e.target.value)}
+      >
+        {!selectedYear && <option value="">--月</option>}
+        {months.map((m) => (
+          <option key={m} value={m}>{Number(m)}月</option>
+        ))}
+      </select>
     </div>
   );
 }
