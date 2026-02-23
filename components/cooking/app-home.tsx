@@ -1087,7 +1087,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                   収入：{kakeiboTotalIncome.toLocaleString()} 円
                 </div>
                 <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-extrabold text-emerald-800">
-                  収支：{kakeiboTotal.toLocaleString()} 円
+                  収支：{Math.abs(kakeiboTotal).toLocaleString()} 円
                 </div>
               </div>
             </div>
@@ -1186,7 +1186,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             </span>
                           </div>
                           <span className="text-base font-extrabold text-emerald-800">
-                            {entry.amount.toLocaleString()} 円
+                            {Math.abs(entry.amount).toLocaleString()} 円
                           </span>
                         </div>
                         <div className="mt-1 text-xs text-slate-500">
