@@ -707,7 +707,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         )}
 
         {tab === "use" && (
-          <Section title="🍳 使用食材" subtitle="まとめて入力 → 合計 → 送信">
+          <Section title="🍳 2人で使った食材" subtitle="まとめて入力 → 合計 → 送信">
             <div className="flex flex-wrap items-end gap-3">
               <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
               <Field label="日付" className="w-[180px]">
