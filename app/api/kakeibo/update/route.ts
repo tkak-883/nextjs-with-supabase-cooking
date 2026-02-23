@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     if (body.note !== undefined) updates.note = String(body.note);
     if (body.amount !== undefined) {
       const amt = Number(body.amount);
-      if (!Number.isFinite(amt) || amt <= 0)
+      if (!Number.isFinite(amt) || amt === 0)
         return NextResponse.json({ error: "amount invalid" }, { status: 400 });
       updates.amount = amt;
     }
