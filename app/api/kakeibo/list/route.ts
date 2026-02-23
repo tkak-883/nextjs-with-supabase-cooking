@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 
     let query = supabase
       .from("kakeibo_entries")
-      .select("id,owner,item,date,amount,category,expense,note,created_at")
+      .select("id,owner,item,date,amount,category,expense,entry_type,note,created_at")
       .eq("owner", owner)
       .order("date", { ascending: false })
       .order("created_at", { ascending: false });
@@ -44,10 +44,10 @@ export async function GET(req: Request) {
     if (error) throw error;
 
     const totalExpense = (data ?? [])
-      .filter((r) => Number(r.amount) > 0)
-      .reduce((s, r) => s + Number(r.amount), 0);
+      .filter((r) => r.entry_type === "expense")
+      .reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
     const totalIncome = (data ?? [])
-      .filter((r) => Number(r.amount) < 0)
+      .filter((r) => r.entry_type === "income")
       .reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
     const total = totalExpense - totalIncome;
 

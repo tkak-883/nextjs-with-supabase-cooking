@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 // POST /api/kakeibo/update
 // body: { id, item?, date?, amount?, category?, note? }
+// entry_type は変更不可（支出→収入の種別変更はここでは行わない）
 export async function POST(req: Request) {
   try {
     const supabase = createAdminClient();

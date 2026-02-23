@@ -30,6 +30,7 @@ export async function POST(req: Request) {
         category,
         expense: null,
         note: note ?? "",
+        entry_type: "expense",
       });
 
     if (kakeiboError) throw kakeiboError;

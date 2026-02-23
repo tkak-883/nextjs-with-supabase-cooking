@@ -23,6 +23,7 @@ type KakeiboEntry = {
   date: string;
   amount: number;
   category: string;
+  entry_type: "expense" | "income";
   expense?: string | null;
   note?: string;
 };
@@ -1417,7 +1418,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                 </div>
               ) : (
                 kakeiboItems
-                  .filter((e) => kakeiboViewMode === "支出" ? e.amount > 0 : e.amount < 0)
+                  .filter((e) => kakeiboViewMode === "支出" ? e.entry_type === "expense" : e.entry_type === "income")
                   .map((entry) => (
                   <Card key={entry.id} className="rounded-3xl border-emerald-100 bg-white/80 p-4">
                     {kakeiboEditId === entry.id ? (
@@ -1478,7 +1479,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                   id: entry.id,
                                   item: kakeiboEditValues?.item,
                                   date: kakeiboEditValues?.date,
-                                  amount: entry.amount < 0
+                                  amount: entry.entry_type === "income"
                                     ? -Math.abs(Number(kakeiboEditValues?.amount))
                                     : Math.abs(Number(kakeiboEditValues?.amount)),
                                   category: kakeiboEditValues?.category,
