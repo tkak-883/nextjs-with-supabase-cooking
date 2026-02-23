@@ -64,7 +64,8 @@ export async function POST(req: Request) {
           item_name: it.name,
           use_amount: r.use_amount,
           amount_per_unit: apu,
-          settle_delta: Math.round(apu * r.use_amount / 2), // 2人割り勘なので半額が精算額
+          // なつの食材→+（たかが返す）、たかの食材→-（なつが返す）。半額が精算額
+          settle_delta: Math.round(apu * r.use_amount / 2) * (owner === "natsu" ? 1 : -1),
         };
       })
       .filter(Boolean);

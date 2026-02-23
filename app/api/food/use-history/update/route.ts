@@ -6,8 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 // POST /api/food/use-history/update
 // body: { id, use_date?, use_amount? }
-// - Inserts a compensating settle_entry for the delta difference
-// - Adjusts food_items.remain by the amount difference
+// - Inserts a compensating settle_entry for the delta difference (owner符号考慮)
+// - food_items.remain は変更しない（過去ログ修正は精算のみに影響）
 export async function POST(req: Request) {
   try {
     const supabase = createAdminClient();
@@ -31,12 +31,12 @@ export async function POST(req: Request) {
     if (!Number.isFinite(newAmount) || newAmount <= 0)
       return NextResponse.json({ error: "use_amount invalid" }, { status: 400 });
 
-    const oldAmount = Number(log.use_amount);
     const apu = Number(log.amount_per_unit);
     const oldDelta = Number(log.settle_delta);
-    const newDelta = Math.round(apu * newAmount / 2); // 2人割り勘なので半額が精算額
+    // なつの食材→+（たかが返す）、たかの食材→-（なつが返す）
+    const sign = log.owner === "natsu" ? 1 : -1;
+    const newDelta = Math.round(apu * newAmount / 2) * sign;
     const deltaDiff = newDelta - oldDelta;
-    const remainDiff = oldAmount - newAmount; // positive = we used less now, increase remain
 
     // Insert compensating settle_entry if settle_delta changed
     if (deltaDiff !== 0) {
@@ -49,26 +49,7 @@ export async function POST(req: Request) {
       if (settleError) throw settleError;
     }
 
-    // Adjust food_items.remain if use_amount changed
-    if (remainDiff !== 0) {
-      const { data: item, error: itemFetchError } = await supabase
-        .from("food_items")
-        .select("remain")
-        .eq("owner", log.owner)
-        .eq("item_id", log.item_id)
-        .single();
-
-      if (!itemFetchError && item) {
-        const newRemain = Number(item.remain) + remainDiff;
-        await supabase
-          .from("food_items")
-          .update({ remain: newRemain })
-          .eq("owner", log.owner)
-          .eq("item_id", log.item_id);
-      }
-    }
-
-    // Update the log
+    // Update the log (food_items.remain は変更しない)
     const { error: updateError } = await supabase
       .from("food_use_logs")
       .update({ use_date: newDate, use_amount: newAmount, settle_delta: newDelta })
