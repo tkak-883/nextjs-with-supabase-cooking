@@ -16,6 +16,14 @@ type FoodItem = {
   amountPerUnit: number;
 };
 
+type SettleEntry = {
+  id: number;
+  date: string;
+  delta: number;
+  source: string;
+  meta: Record<string, any> | null;
+};
+
 type KakeiboEntry = {
   id: number;
   owner: string;
@@ -82,6 +90,13 @@ function fmtYmd(s?: string) {
   return String(s).slice(0, 10);
 }
 
+function sourceLabel(source: string) {
+  if (source === "payment") return "支出";
+  if (source === "food_use") return "食材使用";
+  if (source === "food_use_correction") return "修正";
+  return source;
+}
+
 function settleMessage(total: number) {
   if (total > 0) return `たかがなつに ${total} 円返す`;
   if (total < 0) return `なつがたかに ${Math.abs(total)} 円返す`;
@@ -133,7 +148,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   // 精算表示
   const [settleTotal, setSettleTotal] = useState<number>(0);
   const [settleMonthKey, setSettleMonthKey] = useState<string>("");
-  const settleMonthLabel = useMemo(() => settleMonthKey, [settleMonthKey]);
+  const [settleDetailOpen, setSettleDetailOpen] = useState(false);
+  const [settleDetailItems, setSettleDetailItems] = useState<SettleEntry[]>([]);
+  const [settleDetailLoading, setSettleDetailLoading] = useState(false);
 
   // 使用（food.list）
   const [useDate, setUseDate] = useState<string>("");
@@ -297,6 +314,20 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
       setSettleTotal(Number(res.total) || 0);
     } catch {
       // 失敗してもUIは落とさない（最優先は操作感）
+    }
+  }
+
+  async function loadSettleDetail() {
+    setSettleDetailLoading(true);
+    try {
+      const res = await apiGet<{ ok: boolean; items: SettleEntry[] }>(
+        `/api/settle/list?month=${encodeURIComponent(settleMonthKey)}`
+      );
+      setSettleDetailItems(res.items ?? []);
+    } catch {
+      setSettleDetailItems([]);
+    } finally {
+      setSettleDetailLoading(false);
     }
   }
 
@@ -549,7 +580,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
       <main className="mx-auto w-full max-w-5xl px-4 pb-24 pt-5 md:pb-10">
         {/* Quick settle badge */}
         <Card className="mb-4 border-emerald-100 bg-white/70 p-4 backdrop-blur">
-          <div className="text-xs font-bold text-emerald-700">今月の精算</div>
+          <div className="text-xs font-bold text-emerald-700">精算</div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <MonthPicker value={settleMonthKey} onChange={setSettleMonthKey} />
             <Button
@@ -558,8 +589,57 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
             >
               更新
             </Button>
+            <Button
+              variant="outline"
+              className="rounded-2xl border-emerald-200 bg-white"
+              onClick={async () => {
+                if (!settleDetailOpen) {
+                  await loadSettleDetail();
+                }
+                setSettleDetailOpen((v) => !v);
+              }}
+            >
+              {settleDetailOpen ? "閉じる" : "詳細を見る"}
+            </Button>
           </div>
           <div className="mt-3 text-lg font-extrabold">{settleMessage(settleTotal)}</div>
+          {settleDetailOpen && (
+            <div className="mt-3">
+              {settleDetailLoading ? (
+                <div className="text-xs text-slate-500">読み込み中...</div>
+              ) : settleDetailItems.length === 0 ? (
+                <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">
+                  この月の明細はありません
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  {settleDetailItems.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between gap-2 rounded-2xl border bg-white p-3 text-sm"
+                    >
+                      <div>
+                        <div className="font-bold">
+                          {sourceLabel(entry.source)}
+                          {entry.meta?.item_name ? `（${entry.meta.item_name}）` : ""}
+                        </div>
+                        <div className="text-xs text-slate-500">{fmtYmd(entry.date)}</div>
+                      </div>
+                      <span
+                        className={cn(
+                          "shrink-0 font-extrabold",
+                          entry.delta > 0 ? "text-emerald-700" : "text-red-600"
+                        )}
+                      >
+                        {entry.delta > 0 ? "+" : ""}
+                        {entry.delta.toLocaleString()} 円
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </Card>
 
         {/* Tabs */}
