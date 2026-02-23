@@ -661,20 +661,10 @@ export default function AppHome() {
         {tab === "manage" && (
           <Section title="🥬 食材管理" subtitle="一覧 / 追加 / 月フィルタ（料理っぽく整理）">
             <div className="flex flex-wrap items-end gap-3">
-              <Field label="月フィルタ（YYYY-MM）" className="w-[200px]">
-                <select
-                  className="w-full rounded-2xl border px-3 py-2"
-                  value={manageMonthKey}
-                  onChange={(e) => setManageMonthKey(e.target.value)}
-                >
-                  <option value="">すべて</option>
-                  {manageMonths.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <div className="grid gap-1">
+                <Label className="text-xs font-bold text-slate-600">月フィルタ</Label>
+                <MonthPicker value={manageMonthKey} onChange={setManageMonthKey} allowAll />
+              </div>
 
               <Button
                 variant="outline"
@@ -927,13 +917,10 @@ export default function AppHome() {
         {tab === "kakeibo" && (
           <Section title="📒 家計簿" subtitle={`${ownerJa}の支出一覧`}>
             <div className="mb-4 flex flex-wrap items-end gap-3">
-              <Field label="月（YYYY-MM）" className="w-[180px]">
-                <Input
-                  value={kakeiboMonthKey}
-                  onChange={(e) => setKakeiboMonthKey(e.target.value)}
-                  placeholder="2026-02"
-                />
-              </Field>
+              <div className="grid gap-1">
+                <Label className="text-xs font-bold text-slate-600">月</Label>
+                <MonthPicker value={kakeiboMonthKey} onChange={setKakeiboMonthKey} />
+              </div>
               <Button
                 variant="outline"
                 className="rounded-2xl border-emerald-200 bg-white"
@@ -1140,6 +1127,60 @@ function MonoBox({ text }: { text: string }) {
     <Card className="mt-4 rounded-3xl border-slate-200 bg-slate-950 p-4 text-xs text-slate-100">
       <pre className="whitespace-pre-wrap">{text}</pre>
     </Card>
+  );
+}
+
+function MonthPicker({
+  value,
+  onChange,
+  allowAll = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  allowAll?: boolean;
+}) {
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i); // 2年前〜2年後
+  const months = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+
+  const selectedYear = value ? value.slice(0, 4) : "";
+  const selectedMonth = value ? value.slice(5, 7) : "";
+
+  function handleYear(y: string) {
+    if (!y) { onChange(""); return; }
+    const m = selectedMonth || String(new Date().getMonth() + 1).padStart(2, "0");
+    onChange(`${y}-${m}`);
+  }
+
+  function handleMonth(m: string) {
+    if (!selectedYear) return;
+    onChange(`${selectedYear}-${m}`);
+  }
+
+  return (
+    <div className="flex gap-2">
+      <select
+        className="rounded-2xl border px-3 py-2 text-sm"
+        value={selectedYear}
+        onChange={(e) => handleYear(e.target.value)}
+      >
+        {allowAll && <option value="">すべて</option>}
+        {years.map((y) => (
+          <option key={y} value={String(y)}>{y}年</option>
+        ))}
+      </select>
+      {selectedYear && (
+        <select
+          className="rounded-2xl border px-3 py-2 text-sm"
+          value={selectedMonth}
+          onChange={(e) => handleMonth(e.target.value)}
+        >
+          {months.map((m) => (
+            <option key={m} value={m}>{Number(m)}月</option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }
 
