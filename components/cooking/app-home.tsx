@@ -1160,7 +1160,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                   id: entry.id,
                                   item: kakeiboEditValues?.item,
                                   date: kakeiboEditValues?.date,
-                                  amount: Number(kakeiboEditValues?.amount),
+                                  amount: entry.amount < 0
+                                    ? -Math.abs(Number(kakeiboEditValues?.amount))
+                                    : Math.abs(Number(kakeiboEditValues?.amount)),
                                   category: kakeiboEditValues?.category,
                                   note: kakeiboEditValues?.note,
                                 });
@@ -1202,7 +1204,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                               setKakeiboEditValues({
                                 item: entry.item,
                                 date: fmtYmd(entry.date),
-                                amount: String(entry.amount),
+                                amount: String(Math.abs(entry.amount)),
                                 category: entry.category,
                                 note: entry.note ?? "",
                               });
