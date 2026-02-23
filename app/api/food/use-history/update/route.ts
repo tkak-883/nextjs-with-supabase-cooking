@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     if (!Number.isFinite(newAmount) || newAmount <= 0)
       return NextResponse.json({ error: "use_amount invalid" }, { status: 400 });
 
-    const apu = Number(log.amount_per_unit);
+    const apu = Math.abs(Number(log.amount_per_unit)); // 念のため絶対値
     const oldDelta = Number(log.settle_delta);
     // なつの食材→+（たかが返す）、たかの食材→-（なつが返す）
     const sign = log.owner === "natsu" ? 1 : -1;

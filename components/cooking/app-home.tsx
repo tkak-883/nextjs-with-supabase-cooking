@@ -842,7 +842,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="font-extrabold text-emerald-900">{date}</div>
                         <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-extrabold text-emerald-800">
-                          計 {dayTotal.toLocaleString()} 円
+                          計 {Math.abs(dayTotal).toLocaleString()} 円
                         </span>
                       </div>
                       <div className="grid gap-2">
@@ -908,7 +908,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                 <div>
                                   <div className="font-bold">{log.item_name}</div>
                                   <div className="text-xs text-slate-500">
-                                    使用量：{log.use_amount} ・ {log.settle_delta.toLocaleString()} 円
+                                    使用量：{log.use_amount} ・ {Math.abs(log.settle_delta).toLocaleString()} 円
                                   </div>
                                 </div>
                                 <div className="flex shrink-0 gap-2">
@@ -1017,7 +1017,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                           <div className="flex items-center justify-between gap-2">
                             <div className="font-extrabold">{log.item_name}</div>
                             <span className="text-sm font-extrabold text-emerald-800">
-                              {log.settle_delta.toLocaleString()} 円
+                              {Math.abs(log.settle_delta).toLocaleString()} 円
                             </span>
                           </div>
                           <div className="mt-1 text-xs text-slate-500">

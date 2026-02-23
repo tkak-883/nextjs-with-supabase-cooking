@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       .map((r: any) => {
         const it = itemMap.get(r.item_id);
         if (!it) return null;
-        const apu = Number(it.amount_per_unit) || 0;
+        const apu = Math.abs(Number(it.amount_per_unit) || 0); // 念のため絶対値
         return {
           owner,
           use_date: date,
