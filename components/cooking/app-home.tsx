@@ -534,7 +534,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               🍲
             </div>
             <div>
-              <div className="text-sm font-extrabold tracking-tight">ごはんと家計簿</div>
+              <div className="text-sm font-extrabold tracking-tight">ごはんと家計簿のアプリ</div>
               <div className="text-xs text-slate-500">おいしく食べる</div>
             </div>
           </div>
