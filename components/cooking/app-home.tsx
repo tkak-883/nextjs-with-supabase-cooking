@@ -144,6 +144,10 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   ]);
   const [useOut, setUseOut] = useState<string>("");
 
+  // 固定費チェックボックス
+  const [useSeasoningChecked, setUseSeasoningChecked] = useState(true);
+  const [useUtilityChecked, setUseUtilityChecked] = useState(true);
+
   // 使用履歴
   const [useHistoryItems, setUseHistoryItems] = useState<UseLogEntry[]>([]);
   const [useHistoryMonthKey, setUseHistoryMonthKey] = useState<string>("");
@@ -385,8 +389,10 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
       if (!Number.isFinite(amt) || amt <= 0) continue;
       total += (Number(it.amountPerUnit) || 0) * amt;
     }
+    if (useSeasoningChecked) total += 100;
+    if (useUtilityChecked) total += 200;
     return Math.round(total);
-  }, [foods, useRows]);
+  }, [foods, useRows, useSeasoningChecked, useUtilityChecked]);
 
   const useHistoryByDate = useMemo(() => {
     const map = new Map<string, { logs: UseLogEntry[]; dayTotal: number }>();
@@ -407,11 +413,15 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         .map((r) => ({ item_id: r.item_id, useAmount: Number(r.useAmount) }))
         .filter((r) => r.item_id && Number.isFinite(r.useAmount) && r.useAmount > 0);
 
+      const fixed_items: { name: string; amount: number }[] = [];
+      if (useSeasoningChecked) fixed_items.push({ name: "調味料", amount: 100 });
+      if (useUtilityChecked) fixed_items.push({ name: "水道光熱費", amount: 200 });
+
       if (!useDate) {
         setUseOut("ERROR: 日付が未入力");
         return;
       }
-      if (rows.length === 0) {
+      if (rows.length === 0 && fixed_items.length === 0) {
         setUseOut("ERROR: 具材と使用量を入力");
         return;
       }
@@ -420,6 +430,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         owner: ownerDb,
         date: useDate,
         rows,
+        fixed_items,
       });
 
       setUseOut(JSON.stringify(res, null, 2));
@@ -724,6 +735,28 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               <div className="ml-auto rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-extrabold text-emerald-800">
                 合計：{useTotal} 円
               </div>
+            </div>
+
+            {/* 固定費チェックボックス */}
+            <div className="mt-3 grid gap-2 rounded-2xl border border-emerald-100 bg-white/70 p-3">
+              {(
+                [
+                  { label: "調味料", amount: 100, checked: useSeasoningChecked, set: setUseSeasoningChecked },
+                  { label: "水道光熱費", amount: 200, checked: useUtilityChecked, set: setUseUtilityChecked },
+                ] as const
+              ).map(({ label, amount, checked, set }) => (
+                <label key={label} className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => set(e.target.checked)}
+                    className="h-4 w-4 rounded accent-emerald-600"
+                  />
+                  <span className="text-sm font-bold text-slate-700">
+                    {label}：{amount} 円
+                  </span>
+                </label>
+              ))}
             </div>
 
             <div className="mt-4 grid gap-3">
