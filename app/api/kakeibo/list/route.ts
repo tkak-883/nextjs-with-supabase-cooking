@@ -45,10 +45,10 @@ export async function GET(req: Request) {
 
     const totalExpense = (data ?? [])
       .filter((r) => r.entry_type === "expense")
-      .reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
+      .reduce((s, r) => s + Number(r.amount), 0);
     const totalIncome = (data ?? [])
       .filter((r) => r.entry_type === "income")
-      .reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
+      .reduce((s, r) => s + Number(r.amount), 0);
     const total = totalExpense - totalIncome;
 
     return NextResponse.json({

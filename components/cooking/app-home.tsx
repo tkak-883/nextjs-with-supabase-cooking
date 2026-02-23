@@ -1479,9 +1479,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                   id: entry.id,
                                   item: kakeiboEditValues?.item,
                                   date: kakeiboEditValues?.date,
-                                  amount: entry.entry_type === "income"
-                                    ? -Math.abs(Number(kakeiboEditValues?.amount))
-                                    : Math.abs(Number(kakeiboEditValues?.amount)),
+                                  amount: Math.abs(Number(kakeiboEditValues?.amount)),
                                   category: kakeiboEditValues?.category,
                                   note: kakeiboEditValues?.note,
                                 });

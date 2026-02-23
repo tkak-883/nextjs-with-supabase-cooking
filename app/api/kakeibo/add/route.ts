@@ -11,7 +11,7 @@ function toDbOwner(o: string) {
 }
 
 // POST /api/kakeibo/add
-// 収入として kakeibo_entries に記録する (entry_type='income', amount はマイナスで保存)
+// 収入として kakeibo_entries に記録する (entry_type='income', amount は正の値で保存)
 // body: { owner, category, date, amount, note }
 export async function POST(req: Request) {
   try {
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       owner,
       item: category || "収入",
       date,
-      amount: -amount, // 収入はマイナスで記録（後方互換）
+      amount,
       category,
       note,
       entry_type: "income",
