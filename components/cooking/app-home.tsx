@@ -36,6 +36,7 @@ type UseLogEntry = {
   item_name: string;
   use_amount: number;
   amount_per_unit: number;
+  unit: string;
   settle_delta: number;
 };
 
@@ -138,6 +139,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   const [useDate, setUseDate] = useState<string>("");
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [useRows, setUseRows] = useState<{ item_id: string; useAmount: string }[]>([
+    { item_id: "", useAmount: "" },
     { item_id: "", useAmount: "" },
     { item_id: "", useAmount: "" },
     { item_id: "", useAmount: "" },
@@ -547,22 +549,17 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
       <main className="mx-auto w-full max-w-5xl px-4 pb-24 pt-5 md:pb-10">
         {/* Quick settle badge */}
         <Card className="mb-4 border-emerald-100 bg-white/70 p-4 backdrop-blur">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs font-bold text-emerald-700">今月の精算</div>
-              <div className="mt-1 text-lg font-extrabold">{settleMessage(settleTotal)}</div>
-              <div className="mt-1 text-xs text-slate-500">月キー：{settleMonthLabel}</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <MonthPicker value={settleMonthKey} onChange={setSettleMonthKey} />
-              <Button
-                className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
-                onClick={() => loadSettle()}
-              >
-                更新
-              </Button>
-            </div>
+          <div className="text-xs font-bold text-emerald-700">今月の精算</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <MonthPicker value={settleMonthKey} onChange={setSettleMonthKey} />
+            <Button
+              className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => loadSettle()}
+            >
+              更新
+            </Button>
           </div>
+          <div className="mt-3 text-lg font-extrabold">{settleMessage(settleTotal)}</div>
         </Card>
 
         {/* Tabs */}
@@ -613,18 +610,19 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                   </select>
                 </Field>
 
-                <Field label="日付">
-                  <Input value={payDate} onChange={(e) => setPayDate(e.target.value)} type="date" />
-                </Field>
-
-                <Field label="購入金額（円）">
-                  <Input
-                    value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value)}
-                    inputMode="numeric"
-                    placeholder="例：1200"
-                  />
-                </Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="日付">
+                    <Input value={payDate} onChange={(e) => setPayDate(e.target.value)} type="date" />
+                  </Field>
+                  <Field label="購入金額（円）">
+                    <Input
+                      value={payAmount}
+                      onChange={(e) => setPayAmount(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="例：1200"
+                    />
+                  </Field>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="支払った人">
@@ -759,56 +757,61 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               ))}
             </div>
 
-            <div className="mt-4 grid gap-3">
-              {useRows.map((r, idx) => (
-                <Card key={idx} className="rounded-3xl border-emerald-100 bg-white/80 p-4">
-                  <div className="grid gap-3 md:grid-cols-[1fr_200px_120px]">
-                    <div>
-                      <div className="text-xs font-bold text-slate-500">具材</div>
-                      <select
-                        className="mt-1 w-full rounded-2xl border px-3 py-2"
-                        value={r.item_id}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setUseRows((prev) => prev.map((x, i) => (i === idx ? { ...x, item_id: v } : x)));
-                        }}
-                      >
-                        <option value="">（選択）</option>
-                        {foods.map((f) => (
-                          <option key={f.item_id} value={f.item_id}>
-                            {f.name}
-                          </option>
-                        ))}
-                      </select>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {useRows.map((r, idx) => {
+                const selectedFood = foods.find((f) => f.item_id === r.item_id);
+                return (
+                  <Card key={idx} className="rounded-2xl border-emerald-100 bg-white/80 p-3">
+                    <div className="grid gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-slate-500">具材</div>
+                        <select
+                          className="mt-1 w-full rounded-xl border px-2 py-1.5 text-sm"
+                          value={r.item_id}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setUseRows((prev) => prev.map((x, i) => (i === idx ? { ...x, item_id: v } : x)));
+                          }}
+                        >
+                          <option value="">（選択）</option>
+                          {foods.map((f) => (
+                            <option key={f.item_id} value={f.item_id}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div className="text-xs font-bold text-slate-500">使用量</div>
+                        <div className="mt-1 flex items-center gap-1">
+                          <Input
+                            className="h-8 min-w-0 text-sm"
+                            value={r.useAmount}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setUseRows((prev) => prev.map((x, i) => (i === idx ? { ...x, useAmount: v } : x)));
+                            }}
+                            placeholder="量"
+                          />
+                          {selectedFood && (
+                            <span className="shrink-0 text-xs text-slate-500">{selectedFood.unit}</span>
+                          )}
+                          <Button
+                            variant="outline"
+                            className="h-8 shrink-0 rounded-xl px-2 text-xs"
+                            onClick={() => setUseRows((prev) => prev.filter((_, i) => i !== idx))}
+                          >
+                            ✕
+                          </Button>
+                        </div>
+                      </div>
                     </div>
 
-                    <div>
-                      <div className="text-xs font-bold text-slate-500">使用量</div>
-                      <Input
-                        className="mt-1"
-                        value={r.useAmount}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setUseRows((prev) => prev.map((x, i) => (i === idx ? { ...x, useAmount: v } : x)));
-                        }}
-                        placeholder="例：0.5 / 120"
-                      />
-                    </div>
-
-                    <div className="flex items-end justify-between gap-2">
-                      <Button
-                        variant="outline"
-                        className="w-full rounded-2xl"
-                        onClick={() => setUseRows((prev) => prev.filter((_, i) => i !== idx))}
-                      >
-                        削除
-                      </Button>
-                    </div>
-                  </div>
-
-                  <RowHint foods={foods} itemId={r.item_id} useAmount={r.useAmount} />
-                </Card>
-              ))}
+                    <RowHint foods={foods} itemId={r.item_id} useAmount={r.useAmount} />
+                  </Card>
+                );
+              })}
 
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -831,7 +834,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
             {/* 使用履歴 */}
             <div className="mt-6">
-              <div className="mb-3 flex flex-wrap items-end gap-3">
+              <div className="mb-3 flex flex-wrap items-start gap-3">
                 <div className="text-base font-extrabold tracking-tight">📋 使用履歴</div>
                 {/* 表示モード切替 */}
                 <div className="flex rounded-2xl bg-slate-100 p-1">
@@ -941,7 +944,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                 <div>
                                   <div className="font-bold">{log.item_name}</div>
                                   <div className="text-xs text-slate-500">
-                                    使用量：{log.use_amount} ・ {Math.abs(log.settle_delta).toLocaleString()} 円
+                                    使用量：{log.use_amount}{log.unit ? ` ${log.unit}` : ""} ・ {Math.abs(log.settle_delta).toLocaleString()} 円
                                   </div>
                                 </div>
                                 <div className="flex shrink-0 gap-2">
@@ -1054,7 +1057,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             </span>
                           </div>
                           <div className="mt-1 text-xs text-slate-500">
-                            {fmtYmd(log.use_date)} ・ 使用量：{log.use_amount} ・ 単価：{Math.round(log.amount_per_unit * 1000) / 1000} 円
+                            {fmtYmd(log.use_date)} ・ 使用量：{log.use_amount}{log.unit ? ` ${log.unit}` : ""} ・ 単価：{Math.round(log.amount_per_unit * 1000) / 1000} 円
                           </div>
                           <div className="mt-2 flex gap-2">
                             <Button
@@ -1178,7 +1181,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Card className="rounded-3xl border-emerald-100 bg-white/80 p-4">
                 <div className="mb-2 flex items-baseline justify-between">
-                  <div className="text-sm font-extrabold text-emerald-800">🟢 冷蔵庫の食材</div>
+                  <div className="text-sm font-extrabold text-emerald-800">🟢 使用可能な食材</div>
                   <div className="text-xs text-slate-500">{manageItems.length} 件</div>
                 </div>
 
@@ -1304,12 +1307,12 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
               <Card className="rounded-3xl border-emerald-100 bg-white/80 p-4">
                 <div className="mb-2 flex items-baseline justify-between">
-                  <div className="text-sm font-extrabold text-amber-800">🟠 最近使い切った</div>
+                  <div className="text-sm font-extrabold text-amber-800">🟠 使用済み</div>
                   <div className="text-xs text-slate-500">{manageDeleted.length} 件</div>
                 </div>
 
                 {manageDeleted.length === 0 ? (
-                  <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">最近削除はありません</div>
+                  <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">削除はありません</div>
                 ) : (
                   <div className="grid gap-2">
                     {manageDeleted.map((it) => (

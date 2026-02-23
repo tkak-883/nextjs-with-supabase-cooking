@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       const itemIds = cleanRows.map((r: any) => r.item_id);
       const { data: itemData, error: itemError } = await supabase
         .from("food_items")
-        .select("item_id, name, amount_per_unit")
+        .select("item_id, name, amount_per_unit, unit")
         .eq("owner", owner)
         .in("item_id", itemIds);
       if (itemError) throw itemError;
@@ -76,6 +76,7 @@ export async function POST(req: Request) {
             item_name: it.name,
             use_amount: r.use_amount,
             amount_per_unit: apu,
+            unit: it.unit ?? "",
             settle_delta: Math.round(apu * r.use_amount / 2) * sign,
           };
         })
@@ -100,7 +101,7 @@ export async function POST(req: Request) {
       });
       if (settleError) console.error("fixed settle error:", settleError);
 
-      // food_use_logs に記録（use_amount=1, amount_per_unit=固定金額）
+      // food_use_logs に記録（use_amount=1回, amount_per_unit=固定金額）
       const { error: logError } = await supabase.from("food_use_logs").insert({
         owner,
         use_date: date,
@@ -108,6 +109,7 @@ export async function POST(req: Request) {
         item_name: fi.name,
         use_amount: 1,
         amount_per_unit: fi.amount,
+        unit: "回",
         settle_delta: settleDelta,
       });
       if (logError) console.error("fixed log error:", logError);
