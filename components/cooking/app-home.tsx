@@ -127,6 +127,8 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   const [kakeiboMonthKey, setKakeiboMonthKey] = useState<string>("");
   const [kakeiboItems, setKakeiboItems] = useState<KakeiboEntry[]>([]);
   const [kakeiboTotal, setKakeiboTotal] = useState<number>(0);
+  const [kakeiboTotalExpense, setKakeiboTotalExpense] = useState<number>(0);
+  const [kakeiboTotalIncome, setKakeiboTotalIncome] = useState<number>(0);
   const [kakeiboOut, setKakeiboOut] = useState<string>("");
   const [kakeiboEditId, setKakeiboEditId] = useState<number | null>(null);
   const [kakeiboEditValues, setKakeiboEditValues] = useState<{
@@ -249,11 +251,17 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
       const qs = new URLSearchParams();
       qs.set("owner", ownerDb);
       if (kakeiboMonthKey) qs.set("month", kakeiboMonthKey);
-      const res = await apiGet<{ ok: boolean; items: KakeiboEntry[]; total: number }>(
-        `/api/kakeibo/list?${qs.toString()}`
-      );
+      const res = await apiGet<{
+        ok: boolean;
+        items: KakeiboEntry[];
+        total: number;
+        totalExpense: number;
+        totalIncome: number;
+      }>(`/api/kakeibo/list?${qs.toString()}`);
       setKakeiboItems(res.items ?? []);
       setKakeiboTotal(res.total ?? 0);
+      setKakeiboTotalExpense(res.totalExpense ?? 0);
+      setKakeiboTotalIncome(res.totalIncome ?? 0);
       setKakeiboOut("");
     } catch (e: any) {
       setKakeiboOut(String(e?.message ?? e));
@@ -971,8 +979,16 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               >
                 更新
               </Button>
-              <div className="ml-auto rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-extrabold text-emerald-800">
-                合計：{kakeiboTotal.toLocaleString()} 円
+              <div className="ml-auto flex flex-wrap gap-2">
+                <div className="rounded-2xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-700">
+                  支出：{kakeiboTotalExpense.toLocaleString()} 円
+                </div>
+                <div className="rounded-2xl bg-sky-50 px-3 py-2 text-sm font-extrabold text-sky-700">
+                  収入：{kakeiboTotalIncome.toLocaleString()} 円
+                </div>
+                <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-extrabold text-emerald-800">
+                  収支：{kakeiboTotal.toLocaleString()} 円
+                </div>
               </div>
             </div>
 

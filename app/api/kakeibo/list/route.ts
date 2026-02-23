@@ -43,9 +43,21 @@ export async function GET(req: Request) {
     const { data, error } = await query;
     if (error) throw error;
 
-    const total = (data ?? []).reduce((s, r) => s + Number(r.amount), 0);
+    const totalExpense = (data ?? [])
+      .filter((r) => Number(r.amount) > 0)
+      .reduce((s, r) => s + Number(r.amount), 0);
+    const totalIncome = (data ?? [])
+      .filter((r) => Number(r.amount) < 0)
+      .reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
+    const total = totalExpense - totalIncome;
 
-    return NextResponse.json({ ok: true, items: data ?? [], total: Math.round(total) });
+    return NextResponse.json({
+      ok: true,
+      items: data ?? [],
+      totalExpense: Math.round(totalExpense),
+      totalIncome: Math.round(totalIncome),
+      total: Math.round(total),
+    });
   } catch (err: any) {
     console.error(err);
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
