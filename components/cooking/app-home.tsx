@@ -42,7 +42,7 @@ type ManageItem = {
 };
 
 const TABS: { key: TabKey; label: string; emoji: string }[] = [
-  { key: "payment", label: "支払い", emoji: "🧾" },
+  { key: "payment", label: "支出・収入", emoji: "🧾" },
   { key: "use", label: "使用", emoji: "🍳" },
   { key: "manage", label: "食材", emoji: "🥬" },
   { key: "kakeibo", label: "家計簿", emoji: "📒" },
@@ -107,6 +107,15 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   const [payForWhom, setPayForWhom] = useState<"なつ" | "たか" | "共有">("共有");
   const [payNote, setPayNote] = useState("");
   const [payOut, setPayOut] = useState<string>("");
+
+  // 支出・収入モード切替
+  const [payMode, setPayMode] = useState<"支出" | "収入">("支出");
+
+  // 収入フォーム
+  const [incomeAmount, setIncomeAmount] = useState<string>("");
+  const [incomeCategory, setIncomeCategory] = useState("給与");
+  const [incomeNote, setIncomeNote] = useState("");
+  const [incomeOut, setIncomeOut] = useState<string>("");
 
   // 精算表示
   const [settleTotal, setSettleTotal] = useState<number>(0);
@@ -294,6 +303,34 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
       setPayNote("");
     } catch (e: any) {
       setPayOut(String(e?.message ?? e));
+    }
+  }
+
+  // --- 収入記録 ---
+  async function submitIncome() {
+    setIncomeOut("sending...");
+    try {
+      const amount = Number(incomeAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setIncomeOut("ERROR: 金額が不正");
+        return;
+      }
+      if (!payDate) {
+        setIncomeOut("ERROR: 日付が未入力");
+        return;
+      }
+      const res = await apiPost<any>("/api/kakeibo/add", {
+        owner: ownerDb,
+        category: incomeCategory,
+        date: payDate,
+        amount,
+        note: incomeNote,
+      });
+      setIncomeOut(JSON.stringify(res, null, 2));
+      setIncomeAmount("");
+      setIncomeNote("");
+    } catch (e: any) {
+      setIncomeOut(String(e?.message ?? e));
     }
   }
 
@@ -508,73 +545,151 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
         {/* Tabs */}
         {tab === "payment" && (
-          <Section title="🧾 支払い" subtitle="家計簿＋精算に反映">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="カテゴリー">
-                <select
-                  className="w-full rounded-2xl border px-3 py-2"
-                  value={payCategory}
-                  onChange={(e) => setPayCategory(e.target.value)}
-                >
-                  <option>食材</option>
-                  <option>文具</option>
-                  <option>家具・家電</option>
-                  <option>その他</option>
-                </select>
-              </Field>
-
-              <Field label="日付">
-                <Input value={payDate} onChange={(e) => setPayDate(e.target.value)} type="date" />
-              </Field>
-
-              <Field label="購入金額（円）">
-                <Input
-                  value={payAmount}
-                  onChange={(e) => setPayAmount(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="例：1200"
-                />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="支払った人">
-                  <select
-                    className="w-full rounded-2xl border px-3 py-2"
-                    value={payPayer}
-                    onChange={(e) => setPayPayer(e.target.value as any)}
-                  >
-                    <option>なつ</option>
-                    <option>たか</option>
-                  </select>
-                </Field>
-                <Field label="誰の家（or共有）用？">
-                  <select
-                    className="w-full rounded-2xl border px-3 py-2"
-                    value={payForWhom}
-                    onChange={(e) => setPayForWhom(e.target.value as any)}
-                  >
-                    <option>なつ</option>
-                    <option>たか</option>
-                    <option>共有</option>
-                  </select>
-                </Field>
-              </div>
-
-              <Field label="備考（任意）" className="md:col-span-2">
-                <Input value={payNote} onChange={(e) => setPayNote(e.target.value)} placeholder="空欄OK" />
-              </Field>
-
-              <div className="md:col-span-2">
-                <Button
-                  className="w-full rounded-2xl bg-emerald-600 py-6 text-base font-extrabold hover:bg-emerald-700"
-                  onClick={submitPayment}
-                >
-                  送信する
-                </Button>
-              </div>
-
-              <MonoBox text={payOut} />
+          <Section
+            title="🧾 支出・収入"
+            subtitle={payMode === "支出" ? "家計簿＋精算に反映" : "家計簿のみに記録"}
+          >
+            {/* モード切替トグル */}
+            <div className="mb-5 flex w-fit rounded-2xl bg-slate-100 p-1">
+              <button
+                className={cn(
+                  "rounded-xl px-6 py-2 text-sm font-bold transition",
+                  payMode === "支出"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                )}
+                onClick={() => setPayMode("支出")}
+              >
+                支出
+              </button>
+              <button
+                className={cn(
+                  "rounded-xl px-6 py-2 text-sm font-bold transition",
+                  payMode === "収入"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                )}
+                onClick={() => setPayMode("収入")}
+              >
+                収入
+              </button>
             </div>
+
+            {/* 支出フォーム */}
+            {payMode === "支出" && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="カテゴリー">
+                  <select
+                    className="w-full rounded-2xl border px-3 py-2"
+                    value={payCategory}
+                    onChange={(e) => setPayCategory(e.target.value)}
+                  >
+                    <option>食材</option>
+                    <option>文具</option>
+                    <option>家具・家電</option>
+                    <option>その他</option>
+                  </select>
+                </Field>
+
+                <Field label="日付">
+                  <Input value={payDate} onChange={(e) => setPayDate(e.target.value)} type="date" />
+                </Field>
+
+                <Field label="購入金額（円）">
+                  <Input
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="例：1200"
+                  />
+                </Field>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="支払った人">
+                    <select
+                      className="w-full rounded-2xl border px-3 py-2"
+                      value={payPayer}
+                      onChange={(e) => setPayPayer(e.target.value as any)}
+                    >
+                      <option>なつ</option>
+                      <option>たか</option>
+                    </select>
+                  </Field>
+                  <Field label="誰の家（or共有）用？">
+                    <select
+                      className="w-full rounded-2xl border px-3 py-2"
+                      value={payForWhom}
+                      onChange={(e) => setPayForWhom(e.target.value as any)}
+                    >
+                      <option>なつ</option>
+                      <option>たか</option>
+                      <option>共有</option>
+                    </select>
+                  </Field>
+                </div>
+
+                <Field label="備考（任意）" className="md:col-span-2">
+                  <Input value={payNote} onChange={(e) => setPayNote(e.target.value)} placeholder="空欄OK" />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Button
+                    className="w-full rounded-2xl bg-emerald-600 py-6 text-base font-extrabold hover:bg-emerald-700"
+                    onClick={submitPayment}
+                  >
+                    支出を記録する
+                  </Button>
+                </div>
+
+                <MonoBox text={payOut} />
+              </div>
+            )}
+
+            {/* 収入フォーム */}
+            {payMode === "収入" && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="カテゴリー">
+                  <select
+                    className="w-full rounded-2xl border px-3 py-2"
+                    value={incomeCategory}
+                    onChange={(e) => setIncomeCategory(e.target.value)}
+                  >
+                    <option>給与</option>
+                    <option>精算受取</option>
+                    <option>副収入</option>
+                    <option>その他</option>
+                  </select>
+                </Field>
+
+                <Field label="日付">
+                  <Input value={payDate} onChange={(e) => setPayDate(e.target.value)} type="date" />
+                </Field>
+
+                <Field label="金額（円）" className="md:col-span-2">
+                  <Input
+                    value={incomeAmount}
+                    onChange={(e) => setIncomeAmount(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="例：200000"
+                  />
+                </Field>
+
+                <Field label="備考（任意）" className="md:col-span-2">
+                  <Input value={incomeNote} onChange={(e) => setIncomeNote(e.target.value)} placeholder="空欄OK" />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Button
+                    className="w-full rounded-2xl bg-sky-600 py-6 text-base font-extrabold hover:bg-sky-700"
+                    onClick={submitIncome}
+                  >
+                    収入を記録する
+                  </Button>
+                </div>
+
+                <MonoBox text={incomeOut} />
+              </div>
+            )}
           </Section>
         )}
 
