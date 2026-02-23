@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type TabKey = "payment" | "use" | "manage" | "settle";
+type TabKey = "payment" | "use" | "manage" | "kakeibo";
 
 type FoodItem = {
   name: string;
@@ -14,6 +14,17 @@ type FoodItem = {
   unit: string;
   remain: number;
   amountPerUnit: number;
+};
+
+type KakeiboEntry = {
+  id: number;
+  owner: string;
+  item: string;
+  date: string;
+  amount: number;
+  category: string;
+  expense?: string | null;
+  note?: string;
 };
 
 type ManageItem = {
@@ -34,7 +45,7 @@ const TABS: { key: TabKey; label: string; emoji: string }[] = [
   { key: "payment", label: "支払い", emoji: "🧾" },
   { key: "use", label: "使用", emoji: "🍳" },
   { key: "manage", label: "食材", emoji: "🥬" },
-  { key: "settle", label: "精算", emoji: "🤝" },
+  { key: "kakeibo", label: "家計簿", emoji: "📒" },
 ];
 
 function cn(...xs: (string | false | undefined)[]) {
@@ -112,6 +123,20 @@ export default function AppHome() {
   ]);
   const [useOut, setUseOut] = useState<string>("");
 
+  // 家計簿
+  const [kakeiboMonthKey, setKakeiboMonthKey] = useState<string>("");
+  const [kakeiboItems, setKakeiboItems] = useState<KakeiboEntry[]>([]);
+  const [kakeiboTotal, setKakeiboTotal] = useState<number>(0);
+  const [kakeiboOut, setKakeiboOut] = useState<string>("");
+  const [kakeiboEditId, setKakeiboEditId] = useState<number | null>(null);
+  const [kakeiboEditValues, setKakeiboEditValues] = useState<{
+    item: string;
+    date: string;
+    amount: string;
+    category: string;
+    note: string;
+  } | null>(null);
+
   // 食材情報修正
   const [editId, setEditId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ remain: number; volume: number; price: number; note: string } | null>(null);
@@ -146,6 +171,7 @@ export default function AppHome() {
     if (!useDate) setUseDate(today);
     if (!addPurchaseDate) setAddPurchaseDate(today);
     if (!settleMonthKey) setSettleMonthKey(monthKey);
+    if (!kakeiboMonthKey) setKakeiboMonthKey(monthKey);
   
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -153,12 +179,17 @@ export default function AppHome() {
 
   // --- 初期ロード（タブに応じて） ---
   useEffect(() => {
-    // タブ切替時に必要なものだけ読む（体感速い）
     if (tab === "use") void loadFoods();
     if (tab === "manage") void loadManage();
-    if (tab === "settle" || tab === "payment") void loadSettle();
+    if (tab === "kakeibo") void loadKakeibo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, ownerDb, manageMonthKey, settleMonthKey]);
+  }, [tab, ownerDb, manageMonthKey, kakeiboMonthKey]);
+
+  // 精算バッジは settleMonthKey 変更時に常時更新
+  useEffect(() => {
+    void loadSettle();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settleMonthKey]);
 
   async function loadFoods() {
     setUseOut("loading...");
@@ -205,6 +236,23 @@ export default function AppHome() {
       setSettleTotal(Number(res.total) || 0);
     } catch {
       // 失敗してもUIは落とさない（最優先は操作感）
+    }
+  }
+
+  async function loadKakeibo() {
+    setKakeiboOut("loading...");
+    try {
+      const qs = new URLSearchParams();
+      qs.set("owner", ownerDb);
+      if (kakeiboMonthKey) qs.set("month", kakeiboMonthKey);
+      const res = await apiGet<{ ok: boolean; items: KakeiboEntry[]; total: number }>(
+        `/api/kakeibo/list?${qs.toString()}`
+      );
+      setKakeiboItems(res.items ?? []);
+      setKakeiboTotal(res.total ?? 0);
+      setKakeiboOut("");
+    } catch (e: any) {
+      setKakeiboOut(String(e?.message ?? e));
     }
   }
 
@@ -876,22 +924,169 @@ export default function AppHome() {
           </Section>
         )}
 
-        {tab === "settle" && (
-          <Section title="🤝 精算" subtitle="月キーを変えて確認（LINEで軽く見れる）">
-            <Card className="rounded-3xl border-emerald-100 bg-white/80 p-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <Field label="月キー（YYYY-MM）" className="w-[200px]">
-                  <Input value={settleMonthKey} onChange={(e) => setSettleMonthKey(e.target.value)} placeholder="2026-02" />
-                </Field>
-                <Button className="rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={() => loadSettle()}>
-                  読み込み
-                </Button>
-
-                <div className="ml-auto rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-extrabold text-emerald-800">
-                  {settleMessage(settleTotal)}
-                </div>
+        {tab === "kakeibo" && (
+          <Section title="📒 家計簿" subtitle={`${ownerJa}の支出一覧`}>
+            <div className="mb-4 flex flex-wrap items-end gap-3">
+              <Field label="月（YYYY-MM）" className="w-[180px]">
+                <Input
+                  value={kakeiboMonthKey}
+                  onChange={(e) => setKakeiboMonthKey(e.target.value)}
+                  placeholder="2026-02"
+                />
+              </Field>
+              <Button
+                variant="outline"
+                className="rounded-2xl border-emerald-200 bg-white"
+                onClick={() => loadKakeibo()}
+              >
+                更新
+              </Button>
+              <div className="ml-auto rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-extrabold text-emerald-800">
+                合計：{kakeiboTotal.toLocaleString()} 円
               </div>
-            </Card>
+            </div>
+
+            <div className="grid gap-2">
+              {kakeiboItems.length === 0 && !kakeiboOut ? (
+                <div className="rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-600">
+                  この月の記録はありません
+                </div>
+              ) : (
+                kakeiboItems.map((entry) => (
+                  <Card key={entry.id} className="rounded-3xl border-emerald-100 bg-white/80 p-4">
+                    {kakeiboEditId === entry.id ? (
+                      <div className="grid gap-3">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <Field label="購入品">
+                            <Input
+                              value={kakeiboEditValues?.item ?? ""}
+                              onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, item: e.target.value } : v)}
+                            />
+                          </Field>
+                          <Field label="日付">
+                            <Input
+                              type="date"
+                              value={kakeiboEditValues?.date ?? ""}
+                              onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, date: e.target.value } : v)}
+                            />
+                          </Field>
+                          <Field label="金額（円）">
+                            <Input
+                              inputMode="numeric"
+                              value={kakeiboEditValues?.amount ?? ""}
+                              onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, amount: e.target.value } : v)}
+                            />
+                          </Field>
+                          <Field label="カテゴリー">
+                            <select
+                              className="w-full rounded-2xl border px-3 py-2"
+                              value={kakeiboEditValues?.category ?? ""}
+                              onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, category: e.target.value } : v)}
+                            >
+                              <option>食材</option>
+                              <option>文具</option>
+                              <option>家具・家電</option>
+                              <option>その他</option>
+                            </select>
+                          </Field>
+                          <Field label="備考" className="md:col-span-2">
+                            <Input
+                              value={kakeiboEditValues?.note ?? ""}
+                              onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, note: e.target.value } : v)}
+                            />
+                          </Field>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            className="rounded-2xl"
+                            onClick={() => { setKakeiboEditId(null); setKakeiboEditValues(null); }}
+                          >
+                            キャンセル
+                          </Button>
+                          <Button
+                            className="ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+                            onClick={async () => {
+                              try {
+                                await apiPost("/api/kakeibo/update", {
+                                  id: entry.id,
+                                  item: kakeiboEditValues?.item,
+                                  date: kakeiboEditValues?.date,
+                                  amount: Number(kakeiboEditValues?.amount),
+                                  category: kakeiboEditValues?.category,
+                                  note: kakeiboEditValues?.note,
+                                });
+                                setKakeiboEditId(null);
+                                setKakeiboEditValues(null);
+                                await loadKakeibo();
+                              } catch (e: any) {
+                                setKakeiboOut(String(e?.message ?? e));
+                              }
+                            }}
+                          >
+                            保存
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold">{entry.item}</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                              {entry.category}
+                            </span>
+                          </div>
+                          <span className="text-base font-extrabold text-emerald-800">
+                            {entry.amount.toLocaleString()} 円
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {fmtYmd(entry.date)}
+                          {entry.note ? ` ・ ${entry.note}` : ""}
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <Button
+                            variant="outline"
+                            className="h-8 rounded-2xl text-xs"
+                            onClick={() => {
+                              setKakeiboEditId(entry.id);
+                              setKakeiboEditValues({
+                                item: entry.item,
+                                date: fmtYmd(entry.date),
+                                amount: String(entry.amount),
+                                category: entry.category,
+                                note: entry.note ?? "",
+                              });
+                            }}
+                          >
+                            修正
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
+                            onClick={async () => {
+                              setKakeiboOut("deleting...");
+                              try {
+                                await apiPost("/api/kakeibo/delete", { id: entry.id });
+                                await loadKakeibo();
+                                setKakeiboOut("");
+                              } catch (e: any) {
+                                setKakeiboOut(String(e?.message ?? e));
+                              }
+                            }}
+                          >
+                            削除
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                ))
+              )}
+            </div>
+
+            <MonoBox text={kakeiboOut} />
           </Section>
         )}
       </main>
