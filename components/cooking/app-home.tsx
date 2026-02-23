@@ -92,8 +92,8 @@ async function apiPost<T>(url: string, body: any): Promise<T> {
   return JSON.parse(text);
 }
 
-export default function AppHome() {
-  const [tab, setTab] = useState<TabKey>("payment");
+export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKey }) {
+  const [tab, setTab] = useState<TabKey>(initialTab);
 
   // 共通（ユーザー）
   const [ownerJa, setOwnerJa] = useState<"なつ" | "たか">("なつ");
@@ -426,7 +426,10 @@ export default function AppHome() {
             {TABS.map((t) => (
               <button
                 key={t.key}
-                onClick={() => setTab(t.key)}
+                onClick={() => {
+                setTab(t.key);
+                window.history.replaceState(null, "", `/?page=${t.key}`);
+              }}
                 className={cn(
                   "flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-bold transition",
                   tab === t.key
@@ -1124,7 +1127,10 @@ export default function AppHome() {
           {TABS.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => {
+                setTab(t.key);
+                window.history.replaceState(null, "", `/?page=${t.key}`);
+              }}
               className={cn(
                 "flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-bold",
                 tab === t.key ? "bg-emerald-50 text-emerald-800" : "text-slate-600"
