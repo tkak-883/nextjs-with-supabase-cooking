@@ -145,6 +145,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   const [incomeNote, setIncomeNote] = useState("");
   const [incomeOut, setIncomeOut] = useState<string>("");
 
+  // LINE LIFF
+  const [liffOwner, setLiffOwner] = useState<"なつ" | "たか" | null>(null);
+
   // 精算表示
   const [settleTotal, setSettleTotal] = useState<number>(0);
   const [settleMonthKey, setSettleMonthKey] = useState<string>("");
@@ -191,6 +194,10 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     note: string;
   } | null>(null);
 
+  // 家計簿専用owner（LIFFが有効な場合はLIFF優先、未認証時は手動トグル）
+  const kakeiboOwnerJa = liffOwner ?? ownerJa;
+  const kakeiboOwnerDb = kakeiboOwnerJa === "なつ" ? "natsu" : "taka";
+
   // 家計簿表示フィルタ
   const [kakeiboViewMode, setKakeiboViewMode] = useState<"支出" | "収入">("支出");
 
@@ -219,6 +226,28 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   const [addPurchaseDate, setAddPurchaseDate] = useState<string>("");
   const [addNote, setAddNote] = useState("");
 
+  // LIFF初期化
+  useEffect(() => {
+    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+    if (!liffId) return;
+    (async () => {
+      try {
+        const liff = (await import("@line/liff")).default;
+        await liff.init({ liffId });
+        // LINEブラウザ内でない場合はトグル手動操作にフォールバック
+        if (!liff.isInClient()) return;
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        const profile = await liff.getProfile();
+        const natsuId = process.env.NEXT_PUBLIC_LIFF_NATSU_USER_ID;
+        const takaId = process.env.NEXT_PUBLIC_LIFF_TAKA_USER_ID;
+        if (profile.userId === natsuId) setLiffOwner("なつ");
+        else if (profile.userId === takaId) setLiffOwner("たか");
+      } catch (e) {
+        console.error("LIFF init error:", e);
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     const d = new Date();
     const yyyy = d.getFullYear();
@@ -245,7 +274,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     if (tab === "manage") void loadManage();
     if (tab === "kakeibo") void loadKakeibo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, ownerDb, manageMonthKey, kakeiboMonthKey, useHistoryMonthKey]);
+  }, [tab, ownerDb, manageMonthKey, kakeiboMonthKey, useHistoryMonthKey, kakeiboOwnerDb]);
 
   // 精算バッジは settleMonthKey 変更時に常時更新
   useEffect(() => {
@@ -335,7 +364,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     setKakeiboOut("loading...");
     try {
       const qs = new URLSearchParams();
-      qs.set("owner", ownerDb);
+      qs.set("owner", kakeiboOwnerDb);
       if (kakeiboMonthKey) qs.set("month", kakeiboMonthKey);
       const res = await apiGet<{
         ok: boolean;
@@ -1488,10 +1517,16 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         )}
 
         {tab === "kakeibo" && (
-          <Section title="📒 家計簿" subtitle={`${ownerJa}の${kakeiboViewMode}一覧`}>
+          <Section title="📒 家計簿" subtitle={`${kakeiboOwnerJa}の${kakeiboViewMode}一覧`}>
             {/* コントロール行 */}
             <div className="mb-4 flex flex-wrap items-end gap-3">
-              <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
+              {liffOwner ? (
+                <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
+                  <span>👤 {liffOwner}</span>
+                </div>
+              ) : (
+                <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
+              )}
               <div className="flex rounded-2xl bg-slate-100 p-1">
                 {(["支出", "収入"] as const).map((mode) => (
                   <button
