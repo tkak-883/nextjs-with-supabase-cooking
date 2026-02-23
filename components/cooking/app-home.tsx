@@ -148,6 +148,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     note: string;
   } | null>(null);
 
+  // 家計簿表示フィルタ
+  const [kakeiboViewMode, setKakeiboViewMode] = useState<"支出" | "収入">("支出");
+
   // 食材情報修正
   const [editId, setEditId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ remain: number; volume: number; price: number; note: string } | null>(null);
@@ -443,27 +446,6 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-2xl border bg-white px-2 py-1">
-            <span className="text-xs text-slate-500">家：</span>
-            <button
-              className={cn(
-                "rounded-xl px-3 py-1 text-sm font-bold",
-                ownerJa === "なつ" ? "bg-emerald-100 text-emerald-800" : "text-slate-600"
-              )}
-              onClick={() => setOwnerJa("なつ")}
-            >
-              なつ
-            </button>
-            <button
-              className={cn(
-                "rounded-xl px-3 py-1 text-sm font-bold",
-                ownerJa === "たか" ? "bg-emerald-100 text-emerald-800" : "text-slate-600"
-              )}
-              onClick={() => setOwnerJa("たか")}
-            >
-              たか
-            </button>
-          </div>
         </div>
 
         <div className="mx-auto max-w-5xl px-4 pb-3">
@@ -498,26 +480,6 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
             <div className="text-xs opacity-90">おいしく食べる</div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-2xl bg-white/15 px-2 py-1">
-            <button
-              className={cn(
-                "rounded-xl px-3 py-1 text-sm font-bold",
-                ownerJa === "なつ" ? "bg-white text-emerald-700" : "text-white/90"
-              )}
-              onClick={() => setOwnerJa("なつ")}
-            >
-              なつ
-            </button>
-            <button
-              className={cn(
-                "rounded-xl px-3 py-1 text-sm font-bold",
-                ownerJa === "たか" ? "bg-white text-emerald-700" : "text-white/90"
-              )}
-              onClick={() => setOwnerJa("たか")}
-            >
-              たか
-            </button>
-          </div>
         </div>
       </header>
 
@@ -648,6 +610,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
             {/* 収入フォーム */}
             {payMode === "収入" && (
               <div className="grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
+                </div>
                 <Field label="カテゴリー">
                   <select
                     className="w-full rounded-2xl border px-3 py-2"
@@ -696,6 +661,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         {tab === "use" && (
           <Section title="🍳 使用食材" subtitle="まとめて入力 → 合計 → 送信">
             <div className="flex flex-wrap items-end gap-3">
+              <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
               <Field label="日付" className="w-[180px]">
                 <Input value={useDate} onChange={(e) => setUseDate(e.target.value)} type="date" />
               </Field>
@@ -786,6 +752,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         {tab === "manage" && (
           <Section title="🥬 食材管理" subtitle="一覧 / 追加 / 月フィルタ（料理っぽく整理）">
             <div className="flex flex-wrap items-end gap-3">
+              <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
               <div className="grid gap-1">
                 <Label className="text-xs font-bold text-slate-600">月フィルタ</Label>
                 <MonthPicker value={manageMonthKey} onChange={setManageMonthKey} allowAll />
@@ -1081,8 +1048,26 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         )}
 
         {tab === "kakeibo" && (
-          <Section title="📒 家計簿" subtitle={`${ownerJa}の支出一覧`}>
+          <Section title="📒 家計簿" subtitle={`${ownerJa}の${kakeiboViewMode}一覧`}>
+            {/* コントロール行 */}
             <div className="mb-4 flex flex-wrap items-end gap-3">
+              <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
+              <div className="flex rounded-2xl bg-slate-100 p-1">
+                {(["支出", "収入"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    className={cn(
+                      "rounded-xl px-5 py-1.5 text-sm font-bold transition",
+                      kakeiboViewMode === mode
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                    onClick={() => setKakeiboViewMode(mode)}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
               <div className="grid gap-1">
                 <Label className="text-xs font-bold text-slate-600">月</Label>
                 <MonthPicker value={kakeiboMonthKey} onChange={setKakeiboMonthKey} />
@@ -1113,7 +1098,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                   この月の記録はありません
                 </div>
               ) : (
-                kakeiboItems.map((entry) => (
+                kakeiboItems
+                  .filter((e) => kakeiboViewMode === "支出" ? e.amount > 0 : e.amount < 0)
+                  .map((entry) => (
                   <Card key={entry.id} className="rounded-3xl border-emerald-100 bg-white/80 p-4">
                     {kakeiboEditId === entry.id ? (
                       <div className="grid gap-3">
@@ -1304,6 +1291,33 @@ function MonoBox({ text }: { text: string }) {
     <Card className="mt-4 rounded-3xl border-slate-200 bg-slate-950 p-4 text-xs text-slate-100">
       <pre className="whitespace-pre-wrap">{text}</pre>
     </Card>
+  );
+}
+
+function OwnerToggle({
+  value,
+  onChange,
+}: {
+  value: "なつ" | "たか";
+  onChange: (v: "なつ" | "たか") => void;
+}) {
+  return (
+    <div className="flex rounded-2xl bg-slate-100 p-1">
+      {(["なつ", "たか"] as const).map((name) => (
+        <button
+          key={name}
+          className={cn(
+            "rounded-xl px-4 py-1.5 text-sm font-bold transition",
+            value === name
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
+          )}
+          onClick={() => onChange(name)}
+        >
+          {name}
+        </button>
+      ))}
+    </div>
   );
 }
 
