@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     const oldAmount = Number(log.use_amount);
     const apu = Number(log.amount_per_unit);
     const oldDelta = Number(log.settle_delta);
-    const newDelta = Math.round(apu * newAmount);
+    const newDelta = Math.round(apu * newAmount / 2); // 2人割り勘なので半額が精算額
     const deltaDiff = newDelta - oldDelta;
     const remainDiff = oldAmount - newAmount; // positive = we used less now, increase remain
 
