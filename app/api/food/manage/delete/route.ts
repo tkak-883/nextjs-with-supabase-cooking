@@ -44,11 +44,12 @@ export async function POST(req: Request) {
       });
       if (e2) throw e2;
 
-      await supabase
+      const { error: e3 } = await supabase
         .from("food_items")
         .delete()
         .eq("owner", owner)
         .eq("item_id", id);
+      if (e3) throw e3;
     }
 
     // 30日掃除
@@ -61,6 +62,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     console.error(err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 });
   }
 }
