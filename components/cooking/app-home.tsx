@@ -124,8 +124,8 @@ function settleMessage(total: number) {
 
 function settleDeltaLabel(delta: number): string {
   const abs = Math.abs(delta).toLocaleString();
-  if (delta > 0) return `${abs}円（たか→なつ）`;
-  if (delta < 0) return `${abs}円（なつ→たか）`;
+  if (delta > 0) return `${abs}円`;
+  if (delta < 0) return `${abs}円`;
   return "0円";
 }
 
