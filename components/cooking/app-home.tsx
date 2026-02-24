@@ -141,7 +141,9 @@ type AddItemDraft = {
   note: string;
 };
 function blankDraft(): AddItemDraft {
-  return { _key: Math.random().toString(36).slice(2), name: "", price: "", volume: "", unit: "個", remain: "", purchaseDate: "", note: "" };
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { _key: Math.random().toString(36).slice(2), name: "", price: "", volume: "", unit: "個", remain: "", purchaseDate: today, note: "" };
 }
 
 async function apiGet<T>(url: string): Promise<T> {
