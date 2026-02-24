@@ -327,7 +327,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   
     if (!payDate) setPayDate(today);
     if (!useDate) setUseDate(today);
-    if (!addPurchaseDate) setAddPurchaseDate(today);
+    setAddItems((prev) => prev.map((d, i) => i === 0 && !d.purchaseDate ? { ...d, purchaseDate: today } : d));
     if (!settleMonthKey) setSettleMonthKey(monthKey);
     if (!kakeiboMonthKey) setKakeiboMonthKey(monthKey);
     if (!useHistoryMonthKey) setUseHistoryMonthKey(monthKey);
