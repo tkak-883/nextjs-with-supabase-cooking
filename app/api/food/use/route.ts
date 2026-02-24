@@ -89,17 +89,10 @@ export async function POST(req: Request) {
     }
 
     // --- 固定費（調味料・水道光熱費など） ---
+    let fixedDeltaTotal = 0;
     for (const fi of cleanFixed) {
       const settleDelta = Math.round(fi.amount / 2) * sign;
-
-      // settle_entry に記録
-      const { error: settleError } = await supabase.from("settle_entries").insert({
-        date,
-        delta: settleDelta,
-        source: "food_use",
-        meta: { item_name: fi.name, amount: fi.amount, type: "fixed" },
-      });
-      if (settleError) console.error("fixed settle error:", settleError);
+      fixedDeltaTotal += settleDelta;
 
       // food_use_logs に記録（use_amount=1回, amount_per_unit=固定金額）
       const { error: logError } = await supabase.from("food_use_logs").insert({
@@ -113,6 +106,20 @@ export async function POST(req: Request) {
         settle_delta: settleDelta,
       });
       if (logError) console.error("fixed log error:", logError);
+    }
+
+    // 通常食材（RPC）＋固定費の合計を1行だけ settle_entries に挿入
+    // ※ RPC 側の settle_entries INSERT は削除済みであること
+    const regularDelta = Number(rpcData.settleDeltaTotal ?? 0);
+    const totalDelta = regularDelta + fixedDeltaTotal;
+    if (totalDelta !== 0) {
+      const { error: settleError } = await supabase.from("settle_entries").insert({
+        date,
+        delta: Math.round(totalDelta),
+        source: "food.use",
+        meta: { owner },
+      });
+      if (settleError) console.error("settle insert error:", settleError);
     }
 
     return NextResponse.json({ ok: true, ...rpcData });

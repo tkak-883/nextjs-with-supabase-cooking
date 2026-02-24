@@ -117,8 +117,9 @@ function sourceLabel(source: string) {
 }
 
 function settleMessage(total: number) {
-  if (total > 0) return `なつに返金： ${total} 円`;
-  if (total < 0) return `たかに返金： ${Math.abs(total)} 円`;
+  const rounded = Math.round(total);
+  if (rounded > 0) return `なつに返金： ${rounded} 円`;
+  if (rounded < 0) return `たかに返金： ${Math.abs(rounded)} 円`;
   return "貸し借りなし！";
 }
 
