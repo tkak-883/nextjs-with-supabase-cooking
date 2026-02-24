@@ -130,6 +130,20 @@ function settleDeltaLabel(delta: number): string {
   return "0円";
 }
 
+type AddItemDraft = {
+  _key: string;
+  name: string;
+  price: string;
+  volume: string;
+  unit: string;
+  remain: string;
+  purchaseDate: string;
+  note: string;
+};
+function blankDraft(): AddItemDraft {
+  return { _key: Math.random().toString(36).slice(2), name: "", price: "", volume: "", unit: "個", remain: "", purchaseDate: "", note: "" };
+}
+
 async function apiGet<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
@@ -257,13 +271,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
   // 追加フォーム（管理）
   const [addOpen, setAddOpen] = useState(false);
-  const [addName, setAddName] = useState("");
-  const [addPrice, setAddPrice] = useState("");
-  const [addVolume, setAddVolume] = useState("");
-  const [addUnit, setAddUnit] = useState("個");
-  const [addRemain, setAddRemain] = useState("");
-  const [addPurchaseDate, setAddPurchaseDate] = useState<string>("");
-  const [addNote, setAddNote] = useState("");
+  const [addItems, setAddItems] = useState<AddItemDraft[]>(() => [blankDraft()]);
+  // 削除確認
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   // LIFF初期化
   useEffect(() => {
@@ -642,40 +652,40 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   }
 
   // --- 管理：追加 ---
+  function updateDraft(key: string, field: keyof Omit<AddItemDraft, "_key">, value: string) {
+    setAddItems((prev) => prev.map((d) => (d._key === key ? { ...d, [field]: value } : d)));
+  }
+  function removeDraft(key: string) {
+    setAddItems((prev) => {
+      if (prev.length <= 1) return [blankDraft()];
+      return prev.filter((d) => d._key !== key);
+    });
+  }
+  function addMoreDraft() {
+    setAddItems((prev) => [...prev, blankDraft()]);
+  }
   async function submitAddFood() {
     setManageOut("追加中");
     try {
-      const price = Number(addPrice);
-      const volume = Number(addVolume);
-      const remain = Number(addRemain);
-
-      if (!addName.trim()) return setManageOut("ERROR: 具材名が空");
-      if (!Number.isFinite(price) || price <= 0) return setManageOut("ERROR: 金額が不正");
-      if (!Number.isFinite(volume) || volume <= 0) return setManageOut("ERROR: 内容量が不正");
-      if (!Number.isFinite(remain) || remain < 0) return setManageOut("ERROR: 残量が不正");
-      if (!addPurchaseDate) return setManageOut("ERROR: 購入日が空");
-
-      await apiPost<any>("/api/food/manage/add", {
-        owner: ownerDb,
-        items: [
-          {
-            name: addName,
-            price,
-            volume,
-            unit: addUnit,
-            remain,
-            purchaseDate: addPurchaseDate,
-            note: addNote,
-          },
-        ],
-      });
-
+      const items = addItems.map((d) => ({
+        name: d.name.trim(),
+        price: Number(d.price),
+        volume: Number(d.volume),
+        unit: d.unit,
+        remain: Number(d.remain),
+        purchaseDate: d.purchaseDate,
+        note: d.note,
+      }));
+      for (const item of items) {
+        if (!item.name) return setManageOut("ERROR: 具材名が空");
+        if (!Number.isFinite(item.price) || item.price <= 0) return setManageOut("ERROR: 金額が不正");
+        if (!Number.isFinite(item.volume) || item.volume <= 0) return setManageOut("ERROR: 内容量が不正");
+        if (!Number.isFinite(item.remain) || item.remain < 0) return setManageOut("ERROR: 残量が不正");
+        if (!item.purchaseDate) return setManageOut("ERROR: 購入日が空");
+      }
+      await apiPost<any>("/api/food/manage/add", { owner: ownerDb, items });
       setAddOpen(false);
-      setAddName("");
-      setAddPrice("");
-      setAddVolume("");
-      setAddRemain("");
-      setAddNote("");
+      setAddItems([blankDraft()]);
       setManageOut("");
       await loadManage();
       await loadFoods();
@@ -1255,17 +1265,27 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                           onClick={() => { setUseLogEditId(log.id); setUseLogEditValues({ use_date: fmtYmd(log.use_date), use_amount: String(log.use_amount) }); }}>
                                           修正
                                         </Button>
-                                        <Button variant="outline" className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
-                                          onClick={async () => {
-                                            setUseHistoryOut("削除中");
-                                            try {
-                                              await apiPost("/api/food/use-history/delete", { id: log.id });
-                                              await loadUseHistory(); await loadFoods(); await loadSettle();
-                                              setUseHistoryOut("");
-                                            } catch (e: any) { setUseHistoryOut(String(e?.message ?? e)); }
-                                          }}>
-                                          削除
-                                        </Button>
+                                        {pendingDelete === `useHistory:${log.id}` ? (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-xs text-slate-600">削除しますか？</span>
+                                            <Button className="h-7 rounded-xl bg-red-500 text-xs text-white hover:bg-red-600"
+                                              onClick={async () => {
+                                                setPendingDelete(null);
+                                                setUseHistoryOut("削除中");
+                                                try {
+                                                  await apiPost("/api/food/use-history/delete", { id: log.id });
+                                                  await loadUseHistory(); await loadFoods(); await loadSettle();
+                                                  setUseHistoryOut("");
+                                                } catch (e: any) { setUseHistoryOut(String(e?.message ?? e)); }
+                                              }}>はい</Button>
+                                            <Button variant="outline" className="h-7 rounded-xl text-xs" onClick={() => setPendingDelete(null)}>いいえ</Button>
+                                          </div>
+                                        ) : (
+                                          <Button variant="outline" className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                            onClick={() => setPendingDelete(`useHistory:${log.id}`)}>
+                                            削除
+                                          </Button>
+                                        )}
                                       </div>
                                     </div>
                                   )}
@@ -1363,24 +1383,34 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             >
                               修正
                             </Button>
-                            <Button
-                              variant="outline"
-                              className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
-                              onClick={async () => {
-                                setUseHistoryOut("削除中");
-                                try {
-                                  await apiPost("/api/food/use-history/delete", { id: log.id });
-                                  await loadUseHistory();
-                                  await loadFoods();
-                                  await loadSettle();
-                                  setUseHistoryOut("");
-                                } catch (e: any) {
-                                  setUseHistoryOut(String(e?.message ?? e));
-                                }
-                              }}
-                            >
-                              削除
-                            </Button>
+                            {pendingDelete === `useHistory:${log.id}` ? (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-slate-600">削除しますか？</span>
+                                <Button className="h-7 rounded-xl bg-red-500 text-xs text-white hover:bg-red-600"
+                                  onClick={async () => {
+                                    setPendingDelete(null);
+                                    setUseHistoryOut("削除中");
+                                    try {
+                                      await apiPost("/api/food/use-history/delete", { id: log.id });
+                                      await loadUseHistory();
+                                      await loadFoods();
+                                      await loadSettle();
+                                      setUseHistoryOut("");
+                                    } catch (e: any) {
+                                      setUseHistoryOut(String(e?.message ?? e));
+                                    }
+                                  }}>はい</Button>
+                                <Button variant="outline" className="h-7 rounded-xl text-xs" onClick={() => setPendingDelete(null)}>いいえ</Button>
+                              </div>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                onClick={() => setPendingDelete(`useHistory:${log.id}`)}
+                              >
+                                削除
+                              </Button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1412,53 +1442,73 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               </Button>
 
               <Button
-                className="ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700"
-                onClick={() => setAddOpen((v) => !v)}
+                className={addOpen ? "ml-auto rounded-2xl" : "ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700"}
+                variant={addOpen ? "outline" : "default"}
+                onClick={() => { if (addOpen) { setAddOpen(false); setAddItems([blankDraft()]); } else { setAddOpen(true); } }}
               >
-                ＋ 食材を追加
+                {addOpen ? "キャンセル" : "＋ 食材を追加"}
               </Button>
             </div>
 
             {addOpen && (
               <Card className="mt-4 rounded-3xl border-emerald-100 bg-white/85 p-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Field label="具材名">
-                    <Input value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="例：にんじん" />
-                  </Field>
-                  <Field label="購入日">
-                    <Input value={addPurchaseDate} onChange={(e) => setAddPurchaseDate(e.target.value)} type="date" />
-                  </Field>
-
-                  <Field label="金額（円）">
-                    <Input value={addPrice} onChange={(e) => setAddPrice(e.target.value)} placeholder="例：300" />
-                  </Field>
-                  <Field label="内容量">
-                    <Input value={addVolume} onChange={(e) => setAddVolume(e.target.value)} placeholder="例：3 / 250" />
-                  </Field>
-
-                  <Field label="単位">
-                    <select
-                      className="w-full rounded-2xl border px-3 py-2"
-                      value={addUnit}
-                      onChange={(e) => setAddUnit(e.target.value)}
-                    >
-                      <option value="個">個</option>
-                      <option value="g">g</option>
-                      <option value="ml">ml</option>
-                      <option value="枚">枚</option>
-                    </select>
-                  </Field>
-                  <Field label="残量">
-                    <Input value={addRemain} onChange={(e) => setAddRemain(e.target.value)} placeholder="例：3 / 120" />
-                  </Field>
-
-                  <Field label="備考（任意）" className="md:col-span-2">
-                    <Input value={addNote} onChange={(e) => setAddNote(e.target.value)} placeholder="例：特売" />
-                  </Field>
-
-                  <div className="md:col-span-2 flex gap-2">
-                    <Button variant="outline" className="rounded-2xl" onClick={() => setAddOpen(false)}>
-                      キャンセル
+                <div className="grid gap-3">
+                  {addItems.map((draft) => (
+                    <Card key={draft._key} className="rounded-2xl border-slate-200 bg-slate-50/60 p-3">
+                      <div className="grid gap-2">
+                        {(
+                          [
+                            { label: "具材名", field: "name" as const, placeholder: "例：にんじん", type: "text" },
+                            { label: "購入日", field: "purchaseDate" as const, placeholder: "", type: "date" },
+                            { label: "金額（円）", field: "price" as const, placeholder: "例：300", type: "text" },
+                            { label: "内容量", field: "volume" as const, placeholder: "例：3 / 250", type: "text" },
+                            { label: "残量", field: "remain" as const, placeholder: "例：3 / 120", type: "text" },
+                          ] as { label: string; field: keyof Omit<AddItemDraft, "_key" | "unit" | "note">; placeholder: string; type: string }[]
+                        ).map(({ label, field, placeholder, type }) => (
+                          <div key={field} className="flex items-center gap-2">
+                            <span className="w-20 shrink-0 text-sm text-slate-600">{label}</span>
+                            <Input
+                              className="flex-1"
+                              type={type}
+                              value={draft[field]}
+                              onChange={(e) => updateDraft(draft._key, field, e.target.value)}
+                              placeholder={placeholder}
+                            />
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2">
+                          <span className="w-20 shrink-0 text-sm text-slate-600">単位</span>
+                          <select
+                            className="flex-1 rounded-2xl border px-3 py-2 text-sm"
+                            value={draft.unit}
+                            onChange={(e) => updateDraft(draft._key, "unit", e.target.value)}
+                          >
+                            <option value="個">個</option>
+                            <option value="g">g</option>
+                            <option value="ml">ml</option>
+                            <option value="枚">枚</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-20 shrink-0 text-sm text-slate-600">備考</span>
+                          <Input
+                            className="flex-1"
+                            value={draft.note}
+                            onChange={(e) => updateDraft(draft._key, "note", e.target.value)}
+                            placeholder="例：特売（任意）"
+                          />
+                        </div>
+                        <div className="flex justify-end pt-1">
+                          <Button variant="outline" className="h-7 rounded-xl text-xs" onClick={() => removeDraft(draft._key)}>
+                            キャンセル
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                  <div className="flex gap-2 pt-1">
+                    <Button variant="outline" className="rounded-2xl" onClick={addMoreDraft}>
+                      さらに追加する
                     </Button>
                     <Button className="ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={submitAddFood}>
                       追加する
@@ -1495,26 +1545,33 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                         </div>
 
                         <div className="mt-2 flex gap-2">
-                          <Button
-                            variant="outline"
-                            className="h-9 rounded-2xl text-xs"
-                            onClick={async () => {
-                              setManageOut("削除中");
-                              try {
-                                await apiPost("/api/food/manage/delete", {
-                                  owner: ownerDb,
-                                  itemIds: [it.item_id],
-                                });
-                                await loadManage();
-                                await loadFoods();
-                                setManageOut("");
-                              } catch (e: any) {
-                                setManageOut(String(e?.message ?? e));
-                              }
-                            }}
-                          >
-                          削除
-                          </Button>
+                          {pendingDelete === `manage:${it.item_id}` ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-slate-600">削除しますか？</span>
+                              <Button className="h-7 rounded-xl bg-red-500 text-xs text-white hover:bg-red-600"
+                                onClick={async () => {
+                                  setPendingDelete(null);
+                                  setManageOut("削除中");
+                                  try {
+                                    await apiPost("/api/food/manage/delete", { owner: ownerDb, itemIds: [it.item_id] });
+                                    await loadManage();
+                                    await loadFoods();
+                                    setManageOut("");
+                                  } catch (e: any) {
+                                    setManageOut(String(e?.message ?? e));
+                                  }
+                                }}>はい</Button>
+                              <Button variant="outline" className="h-7 rounded-xl text-xs" onClick={() => setPendingDelete(null)}>いいえ</Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              className="h-9 rounded-2xl text-xs"
+                              onClick={() => setPendingDelete(`manage:${it.item_id}`)}
+                            >
+                              削除
+                            </Button>
+                          )}
                           {editId === it.item_id ? (
                             <div className="mt-3 grid gap-2">
                               <Input
@@ -1867,22 +1924,32 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                           >
                             修正
                           </Button>
-                          <Button
-                            variant="outline"
-                            className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
-                            onClick={async () => {
-                              setKakeiboOut("削除中");
-                              try {
-                                await apiPost("/api/kakeibo/delete", { id: entry.id });
-                                await loadKakeibo();
-                                setKakeiboOut("");
-                              } catch (e: any) {
-                                setKakeiboOut(String(e?.message ?? e));
-                              }
-                            }}
-                          >
-                            削除
-                          </Button>
+                          {pendingDelete === `kakeibo:${entry.id}` ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-slate-600">削除しますか？</span>
+                              <Button className="h-7 rounded-xl bg-red-500 text-xs text-white hover:bg-red-600"
+                                onClick={async () => {
+                                  setPendingDelete(null);
+                                  setKakeiboOut("削除中");
+                                  try {
+                                    await apiPost("/api/kakeibo/delete", { id: entry.id });
+                                    await loadKakeibo();
+                                    setKakeiboOut("");
+                                  } catch (e: any) {
+                                    setKakeiboOut(String(e?.message ?? e));
+                                  }
+                                }}>はい</Button>
+                              <Button variant="outline" className="h-7 rounded-xl text-xs" onClick={() => setPendingDelete(null)}>いいえ</Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
+                              onClick={() => setPendingDelete(`kakeibo:${entry.id}`)}
+                            >
+                              削除
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )}
