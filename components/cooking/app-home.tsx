@@ -147,6 +147,8 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
   // LINE LIFF
   const [liffOwner, setLiffOwner] = useState<"なつ" | "たか" | null>(null);
+  const [liffReady, setLiffReady] = useState(false);
+  const [liffError, setLiffError] = useState<string | null>(null);
 
   // 精算表示
   const [settleTotal, setSettleTotal] = useState<number>(0);
@@ -233,21 +235,32 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   // LIFF初期化
   useEffect(() => {
     const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-    if (!liffId) return;
+    if (!liffId) {
+      setLiffError("LIFF IDが設定されていません");
+      setLiffReady(true);
+      return;
+    }
     (async () => {
       try {
         const liff = (await import("@line/liff")).default;
         await liff.init({ liffId });
-        // LINEブラウザ内でない場合はトグル手動操作にフォールバック
-        if (!liff.isInClient()) return;
+        if (!liff.isInClient()) {
+          setLiffError("このアプリはLINEアプリからのみ利用できます");
+          setLiffReady(true);
+          return;
+        }
         if (!liff.isLoggedIn()) { liff.login(); return; }
         const profile = await liff.getProfile();
         const natsuId = process.env.NEXT_PUBLIC_LIFF_NATSU_USER_ID;
         const takaId = process.env.NEXT_PUBLIC_LIFF_TAKA_USER_ID;
         if (profile.userId === natsuId) setLiffOwner("なつ");
         else if (profile.userId === takaId) setLiffOwner("たか");
+        else setLiffError("このLINEアカウントにはアクセス権限がありません");
+        setLiffReady(true);
       } catch (e) {
         console.error("LIFF init error:", e);
+        setLiffError("初期化に失敗しました。再度お試しください");
+        setLiffReady(true);
       }
     })();
   }, []);
@@ -553,6 +566,30 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     } catch (e: any) {
       setManageOut(String(e?.message ?? e));
     }
+  }
+
+  // --- LIFF アクセスゲート ---
+  if (!liffReady) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-emerald-50 to-white">
+        <div className="text-center text-slate-500">
+          <div className="text-4xl">🍲</div>
+          <div className="mt-3 text-sm">読み込み中...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (liffError) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-emerald-50 to-white px-6">
+        <div className="text-center">
+          <div className="text-4xl">⚠️</div>
+          <div className="mt-4 text-base font-extrabold text-slate-700">{liffError}</div>
+          <div className="mt-2 text-sm text-slate-500">LINEアプリから開いてください</div>
+        </div>
+      </div>
+    );
   }
 
   // --- UI 部品 ---
@@ -1520,13 +1557,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
           <Section title="📒 家計簿" subtitle={`${kakeiboOwnerJa}の${kakeiboViewMode}一覧`}>
             {/* コントロール行 */}
             <div className="mb-4 flex flex-wrap items-end gap-3">
-              {liffOwner ? (
-                <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
-                  <span>👤 {liffOwner}</span>
-                </div>
-              ) : (
-                <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
-              )}
+              <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
+                👤 {kakeiboOwnerJa}
+              </div>
               <div className="flex rounded-2xl bg-slate-100 p-1">
                 {(["支出", "収入"] as const).map((mode) => (
                   <button
