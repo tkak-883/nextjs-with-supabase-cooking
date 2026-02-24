@@ -30,12 +30,50 @@ export async function POST(req: Request) {
     if (Object.keys(updates).length === 0)
       return NextResponse.json({ error: "no fields to update" }, { status: 400 });
 
+    // kakeibo_entriesを更新
     const { error } = await supabase
       .from("kakeibo_entries")
       .update(updates)
       .eq("id", id);
 
     if (error) throw error;
+
+    // 対応するsettle_entryがあれば連動更新（amount・dateが変わった場合のみ影響）
+    if (updates.amount !== undefined || updates.date !== undefined) {
+      const { data: settle } = await supabase
+        .from("settle_entries")
+        .select("id, meta, delta, date")
+        .eq("source", "payment")
+        .filter("meta->>kakeibo_id", "eq", String(id))
+        .maybeSingle();
+
+      if (settle) {
+        const { payer, forWhom } = settle.meta ?? {};
+        const newAmt = updates.amount ?? 0;
+        const settleUpdates: Record<string, any> = {};
+
+        if (updates.date !== undefined) {
+          settleUpdates.date = updates.date;
+        }
+
+        if (updates.amount !== undefined && payer && forWhom) {
+          let newDelta = 0;
+          if (payer === "なつ" && forWhom === "たか") newDelta = newAmt;
+          if (payer === "たか" && forWhom === "なつ") newDelta = -newAmt;
+          if (payer === "なつ" && forWhom === "共有") newDelta = Math.round(newAmt * 0.5);
+          if (payer === "たか" && forWhom === "共有") newDelta = -Math.round(newAmt * 0.5);
+          settleUpdates.delta = newDelta;
+        }
+
+        if (Object.keys(settleUpdates).length > 0) {
+          const { error: settleError } = await supabase
+            .from("settle_entries")
+            .update(settleUpdates)
+            .eq("id", settle.id);
+          if (settleError) throw settleError;
+        }
+      }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {

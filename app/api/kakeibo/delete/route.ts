@@ -14,6 +14,15 @@ export async function POST(req: Request) {
     const id = body?.id;
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
+    // 対応するsettle_entriesを削除（kakeibo_idリンクがある場合）
+    const { error: settleError } = await supabase
+      .from("settle_entries")
+      .delete()
+      .eq("source", "payment")
+      .filter("meta->>kakeibo_id", "eq", String(id));
+
+    if (settleError) throw settleError;
+
     const { error } = await supabase
       .from("kakeibo_entries")
       .delete()

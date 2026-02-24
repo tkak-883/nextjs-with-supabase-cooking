@@ -17,10 +17,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "amount must be > 0" }, { status: 400 });
     }
 
-    // ① 家計簿
+    // ① 家計簿（挿入後にIDを取得）
     const owner = payer === "なつ" ? "natsu" : "taka";
 
-    const { error: kakeiboError } = await supabase
+    const { data: kakeiboData, error: kakeiboError } = await supabase
       .from("kakeibo_entries")
       .insert({
         owner,
@@ -31,7 +31,9 @@ export async function POST(req: Request) {
         expense: null,
         note: note ?? "",
         entry_type: "expense",
-      });
+      })
+      .select("id")
+      .single();
 
     if (kakeiboError) throw kakeiboError;
 
@@ -39,8 +41,8 @@ export async function POST(req: Request) {
     let delta = 0;
     if (payer === "なつ" && forWhom === "たか") delta = amt;
     if (payer === "たか" && forWhom === "なつ") delta = -amt;
-    if (payer === "なつ" && forWhom === "共有") delta = amt * 0.5;
-    if (payer === "たか" && forWhom === "共有") delta = -amt * 0.5;
+    if (payer === "なつ" && forWhom === "共有") delta = Math.round(amt * 0.5);
+    if (payer === "たか" && forWhom === "共有") delta = -Math.round(amt * 0.5);
 
     if (delta !== 0) {
       const { error: settleError } = await supabase
@@ -49,7 +51,7 @@ export async function POST(req: Request) {
           date,
           delta,
           source: "payment",
-          meta: { payer, forWhom, category },
+          meta: { payer, forWhom, category, kakeibo_id: kakeiboData.id },
         });
       if (settleError) throw settleError;
     }
