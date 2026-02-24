@@ -48,6 +48,17 @@ type UseLogEntry = {
   settle_delta: number;
 };
 
+type PayResult = {
+  type: "支出" | "収入";
+  category: string;
+  date: string;
+  amount: number;
+  payer?: string;
+  forWhom?: string;
+  note?: string;
+  settleDelta?: number;
+};
+
 type ManageItem = {
   name: string;
   item_id: string;
@@ -144,6 +155,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   const [incomeCategory, setIncomeCategory] = useState("給与");
   const [incomeNote, setIncomeNote] = useState("");
   const [incomeOut, setIncomeOut] = useState<string>("");
+
+  // 支出・収入 記録結果
+  const [payResult, setPayResult] = useState<PayResult | null>(null);
 
   // LINE LIFF
   const [liffOwner, setLiffOwner] = useState<"なつ" | "たか" | null>(null);
@@ -300,7 +314,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   }, [settleMonthKey]);
 
   async function loadFoods() {
-    setUseOut("loading...");
+    setUseOut("読み込み中");
     try {
       // owner=なつ/たか でもOKの実装にしてる前提。curlのときだけエンコード問題が出る。
       const res = await apiGet<{ ok: boolean; items: FoodItem[] }>(
@@ -314,7 +328,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   }
 
   async function loadUseHistory() {
-    setUseHistoryOut("loading...");
+    setUseHistoryOut("読み込み中");
     try {
       const qs = new URLSearchParams();
       qs.set("owner", ownerDb);
@@ -330,7 +344,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   }
 
   async function loadManage() {
-    setManageOut("loading...");
+    setManageOut("読み込み中");
     try {
       const qs = new URLSearchParams();
       qs.set("owner", ownerDb);
@@ -352,14 +366,16 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     }
   }
 
-  async function loadSettle() {
+  async function loadSettle(): Promise<number> {
     try {
       const res = await apiGet<{ ok: boolean; total: number }>(
         `/api/settle/get?month=${encodeURIComponent(settleMonthKey)}`
       );
-      setSettleTotal(Number(res.total) || 0);
+      const total = Number(res.total) || 0;
+      setSettleTotal(total);
+      return total;
     } catch {
-      // 失敗してもUIは落とさない（最優先は操作感）
+      return settleTotal;
     }
   }
 
@@ -378,7 +394,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   }
 
   async function loadKakeibo() {
-    setKakeiboOut("loading...");
+    setKakeiboOut("読み込み中");
     try {
       const qs = new URLSearchParams();
       qs.set("owner", kakeiboOwnerDb);
@@ -402,15 +418,16 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
   // --- 支払い送信 ---
   async function submitPayment() {
-    setPayOut("sending...");
+    setPayOut("送信中");
+    setPayResult(null);
     try {
       const amount = Number(payAmount);
       if (!Number.isFinite(amount) || amount <= 0) {
         setPayOut("ERROR: 金額が不正");
         return;
       }
-
-      const res = await apiPost<any>("/api/payment/add", {
+      const oldSettle = settleTotal;
+      await apiPost<any>("/api/payment/add", {
         category: payCategory,
         date: payDate,
         amount,
@@ -418,10 +435,18 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         forWhom: payForWhom,
         note: payNote,
       });
-
-      setPayOut(JSON.stringify(res, null, 2));
-      // 送信後に精算を更新
-      await loadSettle();
+      const newSettle = await loadSettle();
+      setPayResult({
+        type: "支出",
+        category: payCategory,
+        date: payDate,
+        amount,
+        payer: payPayer,
+        forWhom: payForWhom,
+        note: payNote,
+        settleDelta: newSettle - oldSettle,
+      });
+      setPayOut("");
       setPayAmount("");
       setPayNote("");
     } catch (e: any) {
@@ -431,7 +456,8 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
   // --- 収入記録 ---
   async function submitIncome() {
-    setIncomeOut("sending...");
+    setIncomeOut("送信中");
+    setPayResult(null);
     try {
       const amount = Number(incomeAmount);
       if (!Number.isFinite(amount) || amount <= 0) {
@@ -442,14 +468,21 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         setIncomeOut("ERROR: 日付が未入力");
         return;
       }
-      const res = await apiPost<any>("/api/kakeibo/add", {
+      await apiPost<any>("/api/kakeibo/add", {
         owner: ownerDb,
         category: incomeCategory,
         date: payDate,
         amount,
         note: incomeNote,
       });
-      setIncomeOut(JSON.stringify(res, null, 2));
+      setPayResult({
+        type: "収入",
+        category: incomeCategory,
+        date: payDate,
+        amount,
+        note: incomeNote,
+      });
+      setIncomeOut("");
       setIncomeAmount("");
       setIncomeNote("");
     } catch (e: any) {
@@ -487,7 +520,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   }, [useHistoryItems]);
 
   async function submitUse() {
-    setUseOut("sending...");
+    setUseOut("送信中");
     try {
       const rows = useRows
         .map((r) => ({ item_id: r.item_id, useAmount: Number(r.useAmount) }))
@@ -519,6 +552,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         { item_id: "", useAmount: "" },
         { item_id: "", useAmount: "" },
         { item_id: "", useAmount: "" },
+        { item_id: "", useAmount: "" },
       ]);
     } catch (e: any) {
       setUseOut(String(e?.message ?? e));
@@ -527,7 +561,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
   // --- 管理：追加 ---
   async function submitAddFood() {
-    setManageOut("adding...");
+    setManageOut("追加中");
     try {
       const price = Number(addPrice);
       const volume = Number(addVolume);
@@ -816,6 +850,12 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                 </div>
 
                 <MonoBox text={payOut} />
+                {payResult && (
+                  <div className="col-span-full mt-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                    <div className="mb-3 text-sm font-extrabold text-emerald-700">✅ 記録完了</div>
+                    <PayResultCard result={payResult} />
+                  </div>
+                )}
               </div>
             )}
 
@@ -865,6 +905,12 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                 </div>
 
                 <MonoBox text={incomeOut} />
+                {payResult && (
+                  <div className="col-span-full mt-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                    <div className="mb-3 text-sm font-extrabold text-emerald-700">✅ 記録完了</div>
+                    <PayResultCard result={payResult} />
+                  </div>
+                )}
               </div>
             )}
           </Section>
@@ -1064,7 +1110,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                   <Button
                                     className="ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700"
                                     onClick={async () => {
-                                      setUseHistoryOut("saving...");
+                                      setUseHistoryOut("保存中");
                                       try {
                                         const newAmount = Number(useLogEditValues?.use_amount);
                                         if (!Number.isFinite(newAmount) || newAmount <= 0) {
@@ -1116,7 +1162,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                     variant="outline"
                                     className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
                                     onClick={async () => {
-                                      setUseHistoryOut("deleting...");
+                                      setUseHistoryOut("削除中");
                                       try {
                                         await apiPost("/api/food/use-history/delete", { id: log.id });
                                         await loadUseHistory();
@@ -1173,7 +1219,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             <Button
                               className="ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700"
                               onClick={async () => {
-                                setUseHistoryOut("saving...");
+                                setUseHistoryOut("保存中");
                                 try {
                                   const newAmount = Number(useLogEditValues?.use_amount);
                                   if (!Number.isFinite(newAmount) || newAmount <= 0) {
@@ -1228,7 +1274,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                               variant="outline"
                               className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
                               onClick={async () => {
-                                setUseHistoryOut("deleting...");
+                                setUseHistoryOut("削除中");
                                 try {
                                   await apiPost("/api/food/use-history/delete", { id: log.id });
                                   await loadUseHistory();
@@ -1360,7 +1406,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             variant="outline"
                             className="h-9 rounded-2xl text-xs"
                             onClick={async () => {
-                              setManageOut("deleting...");
+                              setManageOut("削除中");
                               try {
                                 await apiPost("/api/food/manage/delete", {
                                   owner: ownerDb,
@@ -1508,7 +1554,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                       setManageOut("ERROR: 残量を正しく入力してください");
                                       return;
                                     }
-                                    setManageOut("restoring...");
+                                    setManageOut("復元中");
                                     try {
                                       await apiPost("/api/food/manage/restore", {
                                         owner: ownerDb,
@@ -1554,7 +1600,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         )}
 
         {tab === "kakeibo" && (
-          <Section title="📒 家計簿" subtitle={`${kakeiboOwnerJa}の${kakeiboViewMode}一覧`}>
+          <Section title="📒 家計簿" subtitle={`${kakeiboOwnerJa}の家計簿`}>
             {/* コントロール行 */}
             <div className="mb-4 flex flex-wrap items-end gap-3">
               <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
@@ -1594,8 +1640,11 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                 <div className="rounded-2xl bg-sky-50 px-3 py-2 text-sm font-extrabold text-sky-700">
                   収入：{kakeiboTotalIncome.toLocaleString()} 円
                 </div>
-                <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-extrabold text-emerald-800">
-                  収支：{Math.abs(kakeiboTotal).toLocaleString()} 円
+                <div className={cn(
+                  "rounded-2xl px-3 py-2 text-sm font-extrabold",
+                  kakeiboTotal >= 0 ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"
+                )}>
+                  収支：{kakeiboTotal >= 0 ? "+" : ""}{kakeiboTotal.toLocaleString()} 円
                 </div>
               </div>
             </div>
@@ -1722,7 +1771,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             variant="outline"
                             className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
                             onClick={async () => {
-                              setKakeiboOut("deleting...");
+                              setKakeiboOut("削除中");
                               try {
                                 await apiPost("/api/kakeibo/delete", { id: entry.id });
                                 await loadKakeibo();
@@ -1793,8 +1842,47 @@ function Field(props: { label: string; children: React.ReactNode; className?: st
   );
 }
 
+function PayResultCard({ result }: { result: PayResult }) {
+  const rows: { label: string; value: string; highlight?: boolean }[] = [
+    { label: "種別", value: result.type },
+    { label: "日付", value: result.date },
+    { label: "カテゴリー", value: result.category },
+    { label: "金額", value: `${result.amount.toLocaleString()} 円` },
+    ...(result.payer ? [{ label: "支払い", value: `${result.payer} → ${result.forWhom}` }] : []),
+    ...(result.note ? [{ label: "備考", value: result.note }] : []),
+  ];
+  return (
+    <div className="grid gap-1.5">
+      {rows.map((r) => (
+        <div key={r.label} className="flex justify-between text-sm">
+          <span className="text-slate-500">{r.label}</span>
+          <span className="font-bold">{r.value}</span>
+        </div>
+      ))}
+      {result.settleDelta !== undefined && result.settleDelta !== 0 && (
+        <div className="mt-1 flex justify-between rounded-xl bg-white px-3 py-2 text-sm">
+          <span className="text-slate-500">精算への影響</span>
+          <span className={cn("font-extrabold", result.settleDelta > 0 ? "text-emerald-700" : "text-red-600")}>
+            {result.settleDelta > 0 ? "+" : ""}{result.settleDelta.toLocaleString()} 円
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const LOADING_TEXTS = ["送信中", "読み込み中", "削除中", "追加中", "保存中", "復元中"];
+
 function MonoBox({ text }: { text: string }) {
   if (!text) return null;
+  if (LOADING_TEXTS.includes(text)) {
+    return (
+      <div className="mt-4 flex items-center gap-2 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+        <span>{text}</span>
+      </div>
+    );
+  }
   return (
     <Card className="mt-4 rounded-3xl border-slate-200 bg-slate-950 p-4 text-xs text-slate-100">
       <pre className="whitespace-pre-wrap">{text}</pre>
@@ -1810,7 +1898,7 @@ function OwnerToggle({
   onChange: (v: "なつ" | "たか") => void;
 }) {
   return (
-    <div className="flex rounded-2xl bg-slate-100 p-1">
+    <div className="flex w-fit rounded-2xl bg-slate-100 p-1">
       {(["なつ", "たか"] as const).map((name) => (
         <button
           key={name}
