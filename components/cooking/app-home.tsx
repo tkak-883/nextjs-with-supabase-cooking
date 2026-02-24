@@ -122,6 +122,13 @@ function settleMessage(total: number) {
   return "貸し借りなし！";
 }
 
+function settleDeltaLabel(delta: number): string {
+  const abs = Math.abs(delta).toLocaleString();
+  if (delta > 0) return `マイナス：${abs}円（たか→なつ）`;
+  if (delta < 0) return `プラス：${abs}円（なつ→たか）`;
+  return "0円";
+}
+
 async function apiGet<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
@@ -289,6 +296,14 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
       }
     })();
   }, []);
+
+  // LIFFユーザーが確定したら ownerJa / payPayer を同期
+  useEffect(() => {
+    if (liffOwner) {
+      setOwnerJa(liffOwner);
+      setPayPayer(liffOwner);
+    }
+  }, [liffOwner]);
 
   useEffect(() => {
     const d = new Date();
@@ -543,23 +558,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     });
   }, [useHistoryItems]);
 
-  // 精算詳細：food_use系を日別に1件まとめ→日毎カード構造
+  // 精算詳細：食材使用も含めて各エントリを個別表示→日毎カード構造
   const settleDetailProcessed = useMemo(() => {
-    const FOOD_SOURCES = new Set(["food_use", "food.use"]);
-    const foodDeltaByDate = new Map<string, number>();
-    const otherEntries: SettleEntry[] = [];
-    for (const item of settleDetailItems) {
-      const date = fmtYmd(item.date);
-      if (FOOD_SOURCES.has(item.source)) {
-        foodDeltaByDate.set(date, (foodDeltaByDate.get(date) ?? 0) + item.delta);
-      } else {
-        otherEntries.push(item);
-      }
-    }
-    const foodEntries: SettleEntry[] = Array.from(foodDeltaByDate.entries()).map(
-      ([date, delta], i) => ({ id: -(i + 1), date, delta, source: "food_use_group", meta: null })
-    );
-    const all = [...otherEntries, ...foodEntries].sort((a, b) => b.date.localeCompare(a.date));
+    const all = [...settleDetailItems].sort((a, b) => b.date.localeCompare(a.date));
     const byDate = new Map<string, { entries: SettleEntry[]; dayTotal: number }>();
     for (const e of all) {
       const date = fmtYmd(e.date);
@@ -730,6 +731,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               <button
                 key={t.key}
                 onClick={() => {
+                setSettleDetailOpen(false);
                 setTab(t.key);
                 window.history.replaceState(null, "", `/?page=${t.key}`);
               }}
@@ -764,17 +766,19 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         {/* Quick settle badge */}
         <Card className="mb-4 border-emerald-100 bg-white/70 p-4 backdrop-blur">
           <div className="text-xs font-bold text-emerald-700">精算</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <MonthPicker value={settleMonthKey} onChange={setSettleMonthKey} />
+          <div className="mt-2 flex items-center gap-1.5">
+            <MonthPicker value={settleMonthKey} onChange={setSettleMonthKey} compact />
             <Button
-              className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+              size="sm"
+              className="shrink-0 rounded-2xl bg-emerald-600 hover:bg-emerald-700"
               onClick={() => loadSettle()}
             >
               更新
             </Button>
             <Button
+              size="sm"
               variant="outline"
-              className="rounded-2xl border-emerald-200 bg-white"
+              className="shrink-0 rounded-2xl border-emerald-200 bg-white"
               onClick={async () => {
                 if (!settleDetailOpen) {
                   await loadSettleDetail();
@@ -800,8 +804,8 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                     <Card key={date} className="rounded-2xl border-emerald-100 bg-white/80 p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <div className="text-sm font-extrabold text-emerald-900">{date}</div>
-                        <span className={cn("text-xs font-extrabold", dayTotal >= 0 ? "text-emerald-700" : "text-red-600")}>
-                          {dayTotal >= 0 ? "+" : ""}{dayTotal.toLocaleString()} 円
+                        <span className={cn("text-xs font-extrabold", dayTotal > 0 ? "text-red-600" : dayTotal < 0 ? "text-emerald-700" : "text-slate-500")}>
+                          合計：{settleDeltaLabel(dayTotal)}
                         </span>
                       </div>
                       <div className="grid gap-1.5">
@@ -811,8 +815,8 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                               {sourceLabel(entry.source)}
                               {entry.meta?.item_name ? `（${entry.meta.item_name}）` : ""}
                             </div>
-                            <span className={cn("shrink-0 font-extrabold", entry.delta > 0 ? "text-emerald-700" : "text-red-600")}>
-                              {entry.delta > 0 ? "+" : ""}{entry.delta.toLocaleString()} 円
+                            <span className={cn("shrink-0 font-extrabold", entry.delta > 0 ? "text-red-600" : entry.delta < 0 ? "text-emerald-700" : "text-slate-500")}>
+                              {settleDeltaLabel(entry.delta)}
                             </span>
                           </div>
                         ))}
@@ -1901,6 +1905,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
             <button
               key={t.key}
               onClick={() => {
+                setSettleDetailOpen(false);
                 setTab(t.key);
                 window.history.replaceState(null, "", `/?page=${t.key}`);
               }}
@@ -2019,10 +2024,12 @@ function MonthPicker({
   value,
   onChange,
   allowAll = false,
+  compact = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   allowAll?: boolean;
+  compact?: boolean;
 }) {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i); // 2年前〜2年後
@@ -2042,10 +2049,14 @@ function MonthPicker({
     onChange(`${selectedYear}-${m}`);
   }
 
+  const selectClass = compact
+    ? "rounded-xl border px-1.5 py-1 text-xs"
+    : "rounded-2xl border px-3 py-2 text-sm";
+
   return (
-    <div className="flex gap-2">
+    <div className={compact ? "flex gap-1" : "flex gap-2"}>
       <select
-        className="rounded-2xl border px-3 py-2 text-sm"
+        className={selectClass}
         value={selectedYear}
         onChange={(e) => handleYear(e.target.value)}
       >
@@ -2055,7 +2066,7 @@ function MonthPicker({
         ))}
       </select>
       <select
-        className="rounded-2xl border px-3 py-2 text-sm disabled:opacity-40"
+        className={cn(selectClass, "disabled:opacity-40")}
         value={selectedMonth}
         disabled={!selectedYear}
         onChange={(e) => handleMonth(e.target.value)}

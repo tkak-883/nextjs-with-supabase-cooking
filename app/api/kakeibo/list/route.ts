@@ -49,7 +49,7 @@ export async function GET(req: Request) {
     const totalIncome = (data ?? [])
       .filter((r) => r.entry_type === "income")
       .reduce((s, r) => s + Number(r.amount), 0);
-    const total = totalExpense - totalIncome;
+    const total = totalIncome - totalExpense;
 
     return NextResponse.json({
       ok: true,
