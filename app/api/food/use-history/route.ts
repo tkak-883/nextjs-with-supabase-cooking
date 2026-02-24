@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
     let query = supabase
       .from("food_use_logs")
-      .select("id,owner,use_date,item_id,item_name,use_amount,amount_per_unit,settle_delta,created_at")
+      .select("id,owner,use_date,item_id,item_name,use_amount,amount_per_unit,unit,settle_delta,created_at")
       .eq("owner", owner)
       .order("use_date", { ascending: false })
       .order("created_at", { ascending: false });

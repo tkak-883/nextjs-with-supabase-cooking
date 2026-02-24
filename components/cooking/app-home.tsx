@@ -46,6 +46,14 @@ type UseLogEntry = {
   amount_per_unit: number;
   unit: string;
   settle_delta: number;
+  created_at: string;
+};
+
+type UseResult = {
+  date: string;
+  rows: { name: string; amount: number; unit: string }[];
+  fixedItems: { name: string; amount: number }[];
+  total: number;
 };
 
 type PayResult = {
@@ -103,14 +111,14 @@ function fmtYmd(s?: string) {
 
 function sourceLabel(source: string) {
   if (source === "payment") return "支出";
-  if (source === "food_use") return "食材使用";
-  if (source === "food_use_correction") return "修正";
+  if (source === "food_use" || source === "food.use" || source === "food_use_group") return "食材使用";
+  if (source === "food_use_correction" || source === "food.use_correction") return "修正";
   return source;
 }
 
 function settleMessage(total: number) {
-  if (total > 0) return `たかがなつに ${total} 円返す`;
-  if (total < 0) return `なつがたかに ${Math.abs(total)} 円返す`;
+  if (total > 0) return `なつに返金： ${total} 円`;
+  if (total < 0) return `たかに返金： ${Math.abs(total)} 円`;
   return "貸し借りなし！";
 }
 
@@ -181,6 +189,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     { item_id: "", useAmount: "" },
   ]);
   const [useOut, setUseOut] = useState<string>("");
+
+  // 使用食材 記録結果
+  const [useResult, setUseResult] = useState<UseResult | null>(null);
 
   // 固定費チェックボックス（項目名→チェック状態）
   const [fixedChecked, setFixedChecked] = useState<Record<string, boolean>>({
@@ -508,16 +519,71 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   }, [foods, useRows, ownerDb, fixedChecked]);
 
   const useHistoryByDate = useMemo(() => {
-    const map = new Map<string, { logs: UseLogEntry[]; dayTotal: number }>();
+    const dateMap = new Map<string, Map<string, UseLogEntry[]>>();
     for (const log of useHistoryItems) {
       const date = fmtYmd(log.use_date);
-      if (!map.has(date)) map.set(date, { logs: [], dayTotal: 0 });
-      const entry = map.get(date)!;
-      entry.logs.push(log);
-      entry.dayTotal += Number(log.settle_delta);
+      // 分単位のcreated_atでセッションをグループ化（同一送信分をまとめる）
+      const sessKey = log.created_at ? log.created_at.slice(0, 16) : date;
+      if (!dateMap.has(date)) dateMap.set(date, new Map());
+      const sessMap = dateMap.get(date)!;
+      if (!sessMap.has(sessKey)) sessMap.set(sessKey, []);
+      sessMap.get(sessKey)!.push(log);
+    }
+    return Array.from(dateMap.entries()).map(([date, sessMap]) => {
+      const sessions = Array.from(sessMap.entries()).map(([key, logs]) => ({
+        key,
+        logs,
+        sessionTotal: logs.reduce((s, l) => s + Number(l.settle_delta), 0),
+      }));
+      return {
+        date,
+        sessions,
+        dayTotal: sessions.reduce((s, sess) => s + sess.sessionTotal, 0),
+      };
+    });
+  }, [useHistoryItems]);
+
+  // 精算詳細：food_use系を日別に1件まとめ→日毎カード構造
+  const settleDetailProcessed = useMemo(() => {
+    const FOOD_SOURCES = new Set(["food_use", "food.use"]);
+    const foodDeltaByDate = new Map<string, number>();
+    const otherEntries: SettleEntry[] = [];
+    for (const item of settleDetailItems) {
+      const date = fmtYmd(item.date);
+      if (FOOD_SOURCES.has(item.source)) {
+        foodDeltaByDate.set(date, (foodDeltaByDate.get(date) ?? 0) + item.delta);
+      } else {
+        otherEntries.push(item);
+      }
+    }
+    const foodEntries: SettleEntry[] = Array.from(foodDeltaByDate.entries()).map(
+      ([date, delta], i) => ({ id: -(i + 1), date, delta, source: "food_use_group", meta: null })
+    );
+    const all = [...otherEntries, ...foodEntries].sort((a, b) => b.date.localeCompare(a.date));
+    const byDate = new Map<string, { entries: SettleEntry[]; dayTotal: number }>();
+    for (const e of all) {
+      const date = fmtYmd(e.date);
+      if (!byDate.has(date)) byDate.set(date, { entries: [], dayTotal: 0 });
+      byDate.get(date)!.entries.push(e);
+      byDate.get(date)!.dayTotal += e.delta;
+    }
+    return Array.from(byDate.entries()).map(([date, v]) => ({ date, ...v }));
+  }, [settleDetailItems]);
+
+  // 家計簿：日毎グループ
+  const kakeiboByDate = useMemo(() => {
+    const filtered = kakeiboItems.filter((e) =>
+      kakeiboViewMode === "支出" ? e.entry_type === "expense" : e.entry_type === "income"
+    );
+    const map = new Map<string, { entries: KakeiboEntry[]; dayTotal: number }>();
+    for (const entry of filtered) {
+      const date = fmtYmd(entry.date);
+      if (!map.has(date)) map.set(date, { entries: [], dayTotal: 0 });
+      map.get(date)!.entries.push(entry);
+      map.get(date)!.dayTotal += entry.amount;
     }
     return Array.from(map.entries()).map(([date, v]) => ({ date, ...v }));
-  }, [useHistoryItems]);
+  }, [kakeiboItems, kakeiboViewMode]);
 
   async function submitUse() {
     setUseOut("送信中");
@@ -537,14 +603,28 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         return;
       }
 
-      const res = await apiPost<any>("/api/food/use", {
+      await apiPost<any>("/api/food/use", {
         owner: ownerDb,
         date: useDate,
         rows,
         fixed_items,
       });
 
-      setUseOut(JSON.stringify(res, null, 2));
+      const submittedRows = useRows
+        .map((r) => {
+          const food = foods.find((f) => f.item_id === r.item_id);
+          const amt = Number(r.useAmount);
+          if (!food || !Number.isFinite(amt) || amt <= 0) return null;
+          return { name: food.name, amount: Math.round((food.amountPerUnit || 0) * amt), unit: food.unit };
+        })
+        .filter((r): r is { name: string; amount: number; unit: string } => r !== null);
+      setUseResult({
+        date: useDate,
+        rows: submittedRows,
+        fixedItems: FIXED_ITEMS[ownerDb].filter((fi) => fixedChecked[fi.name]),
+        total: useTotal,
+      });
+      setUseOut("");
       // 更新
       await loadFoods();
       await loadSettle();
@@ -715,29 +795,29 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                   この月の明細はありません
                 </div>
               ) : (
-                <div className="grid gap-2">
-                  {settleDetailItems.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-center justify-between gap-2 rounded-2xl border bg-white p-3 text-sm"
-                    >
-                      <div>
-                        <div className="font-bold">
-                          {sourceLabel(entry.source)}
-                          {entry.meta?.item_name ? `（${entry.meta.item_name}）` : ""}
-                        </div>
-                        <div className="text-xs text-slate-500">{fmtYmd(entry.date)}</div>
+                <div className="grid gap-3">
+                  {settleDetailProcessed.map(({ date, entries, dayTotal }) => (
+                    <Card key={date} className="rounded-2xl border-emerald-100 bg-white/80 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="text-sm font-extrabold text-emerald-900">{date}</div>
+                        <span className={cn("text-xs font-extrabold", dayTotal >= 0 ? "text-emerald-700" : "text-red-600")}>
+                          {dayTotal >= 0 ? "+" : ""}{dayTotal.toLocaleString()} 円
+                        </span>
                       </div>
-                      <span
-                        className={cn(
-                          "shrink-0 font-extrabold",
-                          entry.delta > 0 ? "text-emerald-700" : "text-red-600"
-                        )}
-                      >
-                        {entry.delta > 0 ? "+" : ""}
-                        {entry.delta.toLocaleString()} 円
-                      </span>
-                    </div>
+                      <div className="grid gap-1.5">
+                        {entries.map((entry) => (
+                          <div key={entry.id} className="flex items-center justify-between gap-2 rounded-xl border bg-white px-3 py-2 text-sm">
+                            <div className="font-bold">
+                              {sourceLabel(entry.source)}
+                              {entry.meta?.item_name ? `（${entry.meta.item_name}）` : ""}
+                            </div>
+                            <span className={cn("shrink-0 font-extrabold", entry.delta > 0 ? "text-emerald-700" : "text-red-600")}>
+                              {entry.delta > 0 ? "+" : ""}{entry.delta.toLocaleString()} 円
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
                   ))}
                 </div>
               )}
@@ -1027,6 +1107,33 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               </div>
 
               <MonoBox text={useOut} />
+              {useResult && (
+                <div className="col-span-full mt-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                  <div className="mb-3 text-sm font-extrabold text-emerald-700">✅ 記録完了</div>
+                  <div className="grid gap-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">日付</span>
+                      <span className="font-bold">{useResult.date}</span>
+                    </div>
+                    {useResult.rows.map((r) => (
+                      <div key={r.name} className="flex justify-between">
+                        <span className="text-slate-500">{r.name}</span>
+                        <span className="font-bold">{r.amount.toLocaleString()} 円</span>
+                      </div>
+                    ))}
+                    {useResult.fixedItems.map((f) => (
+                      <div key={f.name} className="flex justify-between">
+                        <span className="text-slate-500">{f.name}</span>
+                        <span className="font-bold">{f.amount.toLocaleString()} 円</span>
+                      </div>
+                    ))}
+                    <div className="mt-1 flex justify-between rounded-xl bg-white px-3 py-2">
+                      <span className="text-slate-500">合計</span>
+                      <span className="font-extrabold text-emerald-700">{useResult.total.toLocaleString()} 円</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 使用履歴 */}
@@ -1068,9 +1175,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                   この月の使用記録はありません
                 </div>
               ) : useHistoryViewMode === "日毎" ? (
-                /* 日毎ビュー */
+                /* 日毎ビュー（日付 → 回 → 食材） */
                 <div className="grid gap-3">
-                  {useHistoryByDate.map(({ date, logs, dayTotal }) => (
+                  {useHistoryByDate.map(({ date, sessions, dayTotal }) => (
                     <Card key={date} className="rounded-3xl border-emerald-100 bg-white/80 p-4">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="font-extrabold text-emerald-900">{date}</div>
@@ -1078,108 +1185,89 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                           計 {Math.abs(dayTotal).toLocaleString()} 円
                         </span>
                       </div>
-                      <div className="grid gap-2">
-                        {logs.map((log) => (
-                          <div key={log.id} className="rounded-2xl border bg-white p-3">
-                            {useLogEditId === log.id ? (
-                              <div className="grid gap-3">
-                                <div className="grid gap-3 md:grid-cols-2">
-                                  <Field label="日付">
-                                    <Input
-                                      type="date"
-                                      value={useLogEditValues?.use_date ?? ""}
-                                      onChange={(e) => setUseLogEditValues((v) => v ? { ...v, use_date: e.target.value } : v)}
-                                    />
-                                  </Field>
-                                  <Field label={`使用量（${log.item_name}）`}>
-                                    <Input
-                                      inputMode="decimal"
-                                      value={useLogEditValues?.use_amount ?? ""}
-                                      onChange={(e) => setUseLogEditValues((v) => v ? { ...v, use_amount: e.target.value } : v)}
-                                    />
-                                  </Field>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="outline"
-                                    className="rounded-2xl"
-                                    onClick={() => { setUseLogEditId(null); setUseLogEditValues(null); }}
-                                  >
-                                    キャンセル
-                                  </Button>
-                                  <Button
-                                    className="ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700"
-                                    onClick={async () => {
-                                      setUseHistoryOut("保存中");
-                                      try {
-                                        const newAmount = Number(useLogEditValues?.use_amount);
-                                        if (!Number.isFinite(newAmount) || newAmount <= 0) {
-                                          setUseHistoryOut("ERROR: 使用量が不正");
-                                          return;
-                                        }
-                                        await apiPost("/api/food/use-history/update", {
-                                          id: log.id,
-                                          use_date: useLogEditValues?.use_date,
-                                          use_amount: newAmount,
-                                        });
-                                        setUseLogEditId(null);
-                                        setUseLogEditValues(null);
-                                        await loadUseHistory();
-                                        await loadFoods();
-                                        await loadSettle();
-                                      } catch (e: any) {
-                                        setUseHistoryOut(String(e?.message ?? e));
-                                      }
-                                    }}
-                                  >
-                                    保存
-                                  </Button>
-                                </div>
+                      <div className="grid gap-3">
+                        {sessions.map(({ key, logs, sessionTotal }) => (
+                          <Card key={key} className="rounded-2xl border-slate-100 bg-slate-50 p-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-xs font-bold text-slate-500">
+                                {key.length >= 16 ? key.slice(11, 16) + " の使用" : "使用"}
                               </div>
-                            ) : (
-                              <div className="flex items-center justify-between gap-2">
-                                <div>
-                                  <div className="font-bold">{log.item_name}</div>
-                                  <div className="text-xs text-slate-500">
-                                    使用量：{log.use_amount}{log.unit ? ` ${log.unit}` : ""} ・ {Math.abs(log.settle_delta).toLocaleString()} 円
-                                  </div>
+                              <span className="text-xs font-extrabold text-emerald-700">
+                                {Math.abs(sessionTotal).toLocaleString()} 円
+                              </span>
+                            </div>
+                            <div className="grid gap-2">
+                              {logs.map((log: UseLogEntry) => (
+                                <div key={log.id} className="rounded-xl border bg-white p-3">
+                                  {useLogEditId === log.id ? (
+                                    <div className="grid gap-3">
+                                      <div className="grid gap-3 md:grid-cols-2">
+                                        <Field label="日付">
+                                          <Input
+                                            type="date"
+                                            value={useLogEditValues?.use_date ?? ""}
+                                            onChange={(e) => setUseLogEditValues((v) => v ? { ...v, use_date: e.target.value } : v)}
+                                          />
+                                        </Field>
+                                        <Field label={`使用量（${log.item_name}）`}>
+                                          <Input
+                                            inputMode="decimal"
+                                            value={useLogEditValues?.use_amount ?? ""}
+                                            onChange={(e) => setUseLogEditValues((v) => v ? { ...v, use_amount: e.target.value } : v)}
+                                          />
+                                        </Field>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Button variant="outline" className="rounded-2xl"
+                                          onClick={() => { setUseLogEditId(null); setUseLogEditValues(null); }}>
+                                          キャンセル
+                                        </Button>
+                                        <Button className="ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+                                          onClick={async () => {
+                                            setUseHistoryOut("保存中");
+                                            try {
+                                              const newAmount = Number(useLogEditValues?.use_amount);
+                                              if (!Number.isFinite(newAmount) || newAmount <= 0) { setUseHistoryOut("ERROR: 使用量が不正"); return; }
+                                              await apiPost("/api/food/use-history/update", { id: log.id, use_date: useLogEditValues?.use_date, use_amount: newAmount });
+                                              setUseLogEditId(null); setUseLogEditValues(null);
+                                              await loadUseHistory(); await loadFoods(); await loadSettle();
+                                            } catch (e: any) { setUseHistoryOut(String(e?.message ?? e)); }
+                                          }}>
+                                          保存
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div>
+                                        <div className="font-bold">{log.item_name}</div>
+                                        <div className="text-xs text-slate-500">
+                                          使用量：{log.use_amount}{log.unit ? ` ${log.unit}` : ""} ・ {Math.abs(log.settle_delta).toLocaleString()} 円
+                                        </div>
+                                      </div>
+                                      <div className="flex shrink-0 gap-2">
+                                        <Button variant="outline" className="h-8 rounded-2xl text-xs"
+                                          onClick={() => { setUseLogEditId(log.id); setUseLogEditValues({ use_date: fmtYmd(log.use_date), use_amount: String(log.use_amount) }); }}>
+                                          修正
+                                        </Button>
+                                        <Button variant="outline" className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                          onClick={async () => {
+                                            setUseHistoryOut("削除中");
+                                            try {
+                                              await apiPost("/api/food/use-history/delete", { id: log.id });
+                                              await loadUseHistory(); await loadFoods(); await loadSettle();
+                                              setUseHistoryOut("");
+                                            } catch (e: any) { setUseHistoryOut(String(e?.message ?? e)); }
+                                          }}>
+                                          削除
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                                <div className="flex shrink-0 gap-2">
-                                  <Button
-                                    variant="outline"
-                                    className="h-8 rounded-2xl text-xs"
-                                    onClick={() => {
-                                      setUseLogEditId(log.id);
-                                      setUseLogEditValues({
-                                        use_date: fmtYmd(log.use_date),
-                                        use_amount: String(log.use_amount),
-                                      });
-                                    }}
-                                  >
-                                    修正
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    className="h-8 rounded-2xl text-xs border-red-200 text-red-600 hover:bg-red-50"
-                                    onClick={async () => {
-                                      setUseHistoryOut("削除中");
-                                      try {
-                                        await apiPost("/api/food/use-history/delete", { id: log.id });
-                                        await loadUseHistory();
-                                        await loadFoods();
-                                        await loadSettle();
-                                        setUseHistoryOut("");
-                                      } catch (e: any) {
-                                        setUseHistoryOut(String(e?.message ?? e));
-                                      }
-                                    }}
-                                  >
-                                    削除
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                              ))}
+                            </div>
+                          </Card>
                         ))}
                       </div>
                     </Card>
@@ -1649,16 +1737,23 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               </div>
             </div>
 
-            <div className="grid gap-2">
-              {kakeiboItems.length === 0 && !kakeiboOut ? (
+            <div className="grid gap-3">
+              {kakeiboByDate.length === 0 && !kakeiboOut ? (
                 <div className="rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-600">
                   この月の記録はありません
                 </div>
               ) : (
-                kakeiboItems
-                  .filter((e) => kakeiboViewMode === "支出" ? e.entry_type === "expense" : e.entry_type === "income")
-                  .map((entry) => (
-                  <Card key={entry.id} className="rounded-3xl border-emerald-100 bg-white/80 p-4">
+                kakeiboByDate.map(({ date, entries, dayTotal }) => (
+                  <Card key={date} className="rounded-3xl border-emerald-100 bg-white/80 p-4">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="font-extrabold text-emerald-900">{date}</div>
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-extrabold text-emerald-800">
+                        計 {dayTotal.toLocaleString()} 円
+                      </span>
+                    </div>
+                    <div className="grid gap-2">
+                  {entries.map((entry) => (
+                  <div key={entry.id} className="rounded-2xl border bg-white p-3">
                     {kakeiboEditId === entry.id ? (
                       <div className="grid gap-3">
                         <div className="grid gap-3 md:grid-cols-2">
@@ -1786,6 +1881,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                         </div>
                       </div>
                     )}
+                  </div>
+                  ))}
+                    </div>
                   </Card>
                 ))
               )}
