@@ -1427,7 +1427,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         )}
 
         {tab === "manage" && (
-          <Section title="🥬 食材管理" subtitle="一覧 / 追加 / 月フィルタ（料理っぽく整理）">
+          <Section title="🥬 食材管理">
             <div className="flex flex-wrap items-end gap-3">
               <OwnerToggle value={ownerJa} onChange={setOwnerJa} />
               <div className="grid gap-1">
