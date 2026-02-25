@@ -1174,17 +1174,19 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                     </button>
                   ))}
                 </div>
-                <div className="grid gap-1">
-                  <Label className="text-xs font-bold text-slate-600">月</Label>
-                  <MonthPicker value={useHistoryMonthKey} onChange={setUseHistoryMonthKey} />
+                <div className="flex items-start gap-2">
+                  <div className="grid gap-1">
+                    <Label className="text-xs font-bold text-slate-600">月</Label>
+                    <MonthPicker value={useHistoryMonthKey} onChange={setUseHistoryMonthKey} />
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="rounded-2xl border-emerald-200 bg-white"
+                    onClick={() => loadUseHistory()}
+                  >
+                    更新
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  className="rounded-2xl border-emerald-200 bg-white"
-                  onClick={() => loadUseHistory()}
-                >
-                  更新
-                </Button>
               </div>
 
               {useHistoryItems.length === 0 && !useHistoryOut ? (
@@ -1207,7 +1209,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                           <Card key={key} className="rounded-2xl border-slate-100 bg-slate-50 p-3">
                             <div className="mb-2 flex items-center justify-between">
                               <div className="text-xs font-bold text-slate-500">
-                                {key.length >= 16 ? key.slice(11, 16) + " の使用" : "使用"}
+                                {key.length >= 16 ? key.slice(11, 16) : "使用"}
                               </div>
                               <span className="text-xs font-extrabold text-emerald-700">
                                 {Math.abs(sessionTotal).toLocaleString()} 円
