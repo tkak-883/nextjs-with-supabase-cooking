@@ -2160,7 +2160,7 @@ const FIXED_ITEMS: Record<"natsu" | "taka", { name: string; amount: number }[]> 
   ],
   taka: [
     { name: "調味料", amount: 30 },
-    { name: "水道代", amount: 100 },
+    { name: "水道代", amount: 67 },
     { name: "電気代", amount: 140 },
     { name: "ガス代", amount: 110 },
   ],
