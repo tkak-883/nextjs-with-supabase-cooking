@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       .from("kakeibo_entries")
       .insert({
         owner,
-        item: "割り勘用",
+        item: category,
         date,
         amount: amt,
         category,
