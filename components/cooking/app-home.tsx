@@ -34,8 +34,7 @@ type KakeiboEntry = {
   entry_type: "expense" | "income";
   expense?: string | null;
   note?: string;
-  payer?: string | null;
-  forWhom?: string | null;
+  for_whom?: string | null;
 };
 
 type UseLogEntry = {
@@ -1978,16 +1977,16 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                               onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, note: e.target.value } : v)}
                             />
                           </Field>
-                          {entry.entry_type === "expense" && entry.forWhom && (
+                          {entry.entry_type === "expense" && entry.for_whom && (
                             <Field label="誰のため？" className="md:col-span-2">
                               <select
                                 className="w-full rounded-2xl border px-3 py-2"
                                 value={kakeiboEditValues?.forWhom ?? ""}
                                 onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, forWhom: e.target.value } : v)}
                               >
-                                <option value={entry.payer ?? ""}>自分（{entry.payer}）</option>
-                                <option value={entry.payer === "なつ" ? "たか" : "なつ"}>
-                                  {entry.payer === "なつ" ? "たか" : "なつ"}のため
+                                <option value={kakeiboOwnerJa}>自分（{kakeiboOwnerJa}）</option>
+                                <option value={kakeiboOwnerJa === "なつ" ? "たか" : "なつ"}>
+                                  {kakeiboOwnerJa === "なつ" ? "たか" : "なつ"}のため
                                 </option>
                                 <option value="共有">共有</option>
                               </select>
@@ -2013,7 +2012,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                   amount: Math.abs(Number(kakeiboEditValues?.amount)),
                                   category: kakeiboEditValues?.category,
                                   note: kakeiboEditValues?.note,
-                                  ...(entry.entry_type === "expense" && entry.forWhom
+                                  ...(entry.entry_type === "expense" && entry.for_whom
                                     ? { forWhom: kakeiboEditValues?.forWhom }
                                     : {}),
                                 });
@@ -2037,19 +2036,19 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                               {entry.category}
                             </span>
-                            {entry.entry_type === "expense" && entry.forWhom && (
+                            {entry.entry_type === "expense" && entry.for_whom && (
                               <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                                entry.forWhom === "共有"
+                                entry.for_whom === "共有"
                                   ? "bg-sky-50 text-sky-700"
-                                  : entry.forWhom === entry.payer
+                                  : entry.for_whom === kakeiboOwnerJa
                                   ? "bg-slate-50 text-slate-500"
                                   : "bg-amber-50 text-amber-700"
                               }`}>
-                                {entry.forWhom === entry.payer
+                                {entry.for_whom === kakeiboOwnerJa
                                   ? "自分のため"
-                                  : entry.forWhom === "共有"
+                                  : entry.for_whom === "共有"
                                   ? "共有"
-                                  : `${entry.forWhom}のため`}
+                                  : `${entry.for_whom}のため`}
                               </span>
                             )}
                           </div>
@@ -2073,7 +2072,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                 amount: String(Math.abs(entry.amount)),
                                 category: entry.category,
                                 note: entry.note ?? "",
-                                forWhom: entry.forWhom ?? "",
+                                forWhom: entry.for_whom ?? "",
                               });
                             }}
                           >

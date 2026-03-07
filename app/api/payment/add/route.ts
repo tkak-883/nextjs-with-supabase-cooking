@@ -31,6 +31,7 @@ export async function POST(req: Request) {
         expense: null,
         note: note ?? "",
         entry_type: "expense",
+        for_whom: forWhom,
       })
       .select("id")
       .single();

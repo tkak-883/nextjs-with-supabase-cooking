@@ -22,12 +22,9 @@ export async function GET(req: Request) {
 
     const month = (url.searchParams.get("month") ?? "").trim(); // "YYYY-MM"
 
-    let dateStart = "";
-    let dateEnd = "";
-
     let query = supabase
       .from("kakeibo_entries")
-      .select("id,owner,item,date,amount,category,expense,entry_type,note,created_at")
+      .select("id,owner,item,date,amount,category,expense,entry_type,note,for_whom,created_at")
       .eq("owner", owner)
       .order("date", { ascending: false })
       .order("created_at", { ascending: false });
@@ -36,42 +33,17 @@ export async function GET(req: Request) {
       const [yStr, mStr] = month.split("-");
       const y = Number(yStr);
       const m = Number(mStr);
-      dateStart = `${yStr}-${mStr.padStart(2, "0")}-01`;
+      const dateStart = `${yStr}-${mStr.padStart(2, "0")}-01`;
       const nextM = m === 12 ? 1 : m + 1;
       const nextY = m === 12 ? y + 1 : y;
-      dateEnd = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+      const dateEnd = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
       query = query.gte("date", dateStart).lt("date", dateEnd);
     }
 
     const { data, error } = await query;
     if (error) throw error;
 
-    // settle_entriesからpayer/forWhomを結合
-    const settleByKakeiboId = new Map<string, { payer: string; forWhom: string }>();
-    {
-      let settleQuery = supabase
-        .from("settle_entries")
-        .select("meta")
-        .eq("source", "payment");
-      if (dateStart && dateEnd) {
-        settleQuery = settleQuery.gte("date", dateStart).lt("date", dateEnd);
-      }
-      const { data: settleData } = await settleQuery;
-      for (const s of settleData ?? []) {
-        if (s.meta?.kakeibo_id != null) {
-          settleByKakeiboId.set(String(s.meta.kakeibo_id), {
-            payer: s.meta.payer ?? "",
-            forWhom: s.meta.forWhom ?? "",
-          });
-        }
-      }
-    }
-
-    const items = (data ?? []).map((r) => ({
-      ...r,
-      payer: settleByKakeiboId.get(String(r.id))?.payer ?? null,
-      forWhom: settleByKakeiboId.get(String(r.id))?.forWhom ?? null,
-    }));
+    const items = data ?? [];
 
     const totalExpense = items
       .filter((r) => r.entry_type === "expense")

@@ -20,6 +20,7 @@ export async function POST(req: Request) {
     if (body.date !== undefined) updates.date = String(body.date).trim();
     if (body.category !== undefined) updates.category = String(body.category).trim();
     if (body.note !== undefined) updates.note = String(body.note);
+    if (body.forWhom !== undefined) updates.for_whom = String(body.forWhom);
     if (body.amount !== undefined) {
       const amt = Number(body.amount);
       if (!Number.isFinite(amt) || amt <= 0)
@@ -27,17 +28,15 @@ export async function POST(req: Request) {
       updates.amount = amt;
     }
 
-    if (Object.keys(updates).length === 0 && body.forWhom === undefined)
+    if (Object.keys(updates).length === 0)
       return NextResponse.json({ error: "no fields to update" }, { status: 400 });
 
     // kakeibo_entriesを更新
-    if (Object.keys(updates).length > 0) {
-      const { error } = await supabase
-        .from("kakeibo_entries")
-        .update(updates)
-        .eq("id", id);
-      if (error) throw error;
-    }
+    const { error } = await supabase
+      .from("kakeibo_entries")
+      .update(updates)
+      .eq("id", id);
+    if (error) throw error;
 
     // 対応するsettle_entryがあれば連動更新
     const needsSettleUpdate =
