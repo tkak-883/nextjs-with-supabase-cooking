@@ -258,7 +258,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
 
   // 食材情報修正
   const [editId, setEditId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{ remain: number; volume: number; price: number; note: string } | null>(null);
+  const [editValues, setEditValues] = useState<{ name: string; remain: string; volume: string; price: string; note: string; purchaseDate: string } | null>(null);
 
   // 管理（manage.list）
   const [manageMonthKey, setManageMonthKey] = useState<string>("");
@@ -1577,43 +1577,47 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             </Button>
                           )}
                           {editId === it.item_id ? (
-                            <div className="mt-3 grid gap-2">
-                              <Input
-                                value={String(editValues?.remain ?? "")}
-                                placeholder="残量"
-                                onChange={(e) => setEditValues((v) => v ? { ...v, remain: Number(e.target.value) } : v)}
-                              />
-                              <Input
-                                value={String(editValues?.volume ?? "")}
-                                placeholder="内容量"
-                                onChange={(e) => setEditValues((v) => v ? { ...v, volume: Number(e.target.value) } : v)}
-                              />
-                              <Input
-                                value={String(editValues?.price ?? "")}
-                                placeholder="金額"
-                                onChange={(e) => setEditValues((v) => v ? { ...v, price: Number(e.target.value) } : v)}
-                              />
-                              <Input
-                                value={editValues?.note ?? ""}
-                                placeholder="備考"
-                                onChange={(e) => setEditValues((v) => v ? { ...v, note: e.target.value } : v)}
-                              />
+                            <div className="mt-3 grid gap-2 w-full">
+                              {(
+                                [
+                                  { label: "名称", field: "name" as const, type: "text", inputMode: undefined },
+                                  { label: "購入日", field: "purchaseDate" as const, type: "date", inputMode: undefined },
+                                  { label: "残量", field: "remain" as const, type: "text", inputMode: "decimal" as const },
+                                  { label: "内容量", field: "volume" as const, type: "text", inputMode: "decimal" as const },
+                                  { label: "価格", field: "price" as const, type: "text", inputMode: "decimal" as const },
+                                  { label: "備考", field: "note" as const, type: "text", inputMode: undefined },
+                                ]
+                              ).map(({ label, field, type, inputMode }) => (
+                                <div key={field} className="flex items-center gap-2">
+                                  <span className="w-14 shrink-0 text-sm text-slate-600">{label}</span>
+                                  <Input
+                                    className="flex-1"
+                                    type={type}
+                                    inputMode={inputMode}
+                                    value={editValues?.[field] ?? ""}
+                                    onChange={(e) => setEditValues((v) => v ? { ...v, [field]: e.target.value } : v)}
+                                  />
+                                </div>
+                              ))}
 
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 pt-1">
                                 <Button
                                   variant="outline"
+                                  className="rounded-2xl"
                                   onClick={() => { setEditId(null); setEditValues(null); }}
                                 >
                                   キャンセル
                                 </Button>
 
                                 <Button
-                                  className="bg-emerald-600 hover:bg-emerald-700"
+                                  className="ml-auto rounded-2xl bg-emerald-600 hover:bg-emerald-700"
                                   onClick={async () => {
                                     try {
                                       await apiPost("/api/food/manage/update", {
                                         owner: ownerDb,
                                         item_id: it.item_id,
+                                        name: editValues?.name,
+                                        purchaseDate: editValues?.purchaseDate,
                                         volume: editValues?.volume,
                                         remain: editValues?.remain,
                                         price: editValues?.price,
@@ -1639,9 +1643,11 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                               onClick={() => {
                                 setEditId(it.item_id);
                                 setEditValues({
-                                  remain: it.remain ?? 0,
-                                  volume: it.volume ?? 1,
-                                  price: it.amountPerUnit * (it.volume ?? 1),
+                                  name: it.name ?? "",
+                                  purchaseDate: fmtYmd(it.purchaseDate),
+                                  remain: String(it.remain ?? 0),
+                                  volume: String(it.volume ?? 1),
+                                  price: String(Math.round((it.amountPerUnit * (it.volume ?? 1)) * 1000) / 1000),
                                   note: it.note ?? "",
                                 });
                               }}

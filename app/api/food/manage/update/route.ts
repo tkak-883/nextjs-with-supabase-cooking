@@ -25,6 +25,8 @@ export async function POST(req: Request) {
     const volume = Number(body?.volume);
     const remain = Number(body?.remain);
     const note = body?.note ?? "";
+    const name = body?.name ? String(body.name).trim() : null;
+    const purchaseDate = body?.purchaseDate ? String(body.purchaseDate) : null;
 
     if (!Number.isFinite(price) || price <= 0)
       return NextResponse.json({ error: "price invalid" }, { status: 400 });
@@ -37,15 +39,19 @@ export async function POST(req: Request) {
 
     const amount_per_unit = price / volume;
 
+    const updatePayload: Record<string, any> = {
+      price,
+      volume,
+      remain,
+      amount_per_unit,
+      note,
+    };
+    if (name) updatePayload.name = name;
+    if (purchaseDate) updatePayload.purchase_date = purchaseDate;
+
     const { error } = await supabase
       .from("food_items")
-      .update({
-        price,
-        volume,
-        remain,
-        amount_per_unit,
-        note,
-      })
+      .update(updatePayload)
       .eq("owner", owner)
       .eq("item_id", itemId);
 
