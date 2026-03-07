@@ -851,7 +851,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                   />
                 </div>
                 <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-                  <span className="w-16 text-sm text-slate-600">誰が払う</span>
+                  <span className="w-16 text-sm text-slate-600">誰に払う</span>
                   <select
                     className="w-full rounded-2xl border px-3 py-2 text-sm"
                     value={settleAddPayer}
