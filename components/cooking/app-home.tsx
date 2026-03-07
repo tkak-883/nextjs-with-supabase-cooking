@@ -936,6 +936,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                             <div className="font-bold">
                               {sourceLabel(entry.source)}
                               {entry.meta?.item_name ? `（${entry.meta.item_name}）` : ""}
+                              {entry.source === "manual" && entry.meta?.note ? (
+                                <span className="ml-1 text-xs font-normal text-slate-500">（{entry.meta.note}）</span>
+                              ) : null}
                             </div>
                             <span className={cn("shrink-0 font-extrabold", entry.delta > 0 ? "text-red-600" : entry.delta < 0 ? "text-emerald-700" : "text-slate-500")}>
                               {settleDeltaLabel(entry.delta)}
