@@ -27,19 +27,23 @@ export async function POST(req: Request) {
       updates.amount = amt;
     }
 
-    if (Object.keys(updates).length === 0)
+    if (Object.keys(updates).length === 0 && body.forWhom === undefined)
       return NextResponse.json({ error: "no fields to update" }, { status: 400 });
 
     // kakeibo_entriesを更新
-    const { error } = await supabase
-      .from("kakeibo_entries")
-      .update(updates)
-      .eq("id", id);
+    if (Object.keys(updates).length > 0) {
+      const { error } = await supabase
+        .from("kakeibo_entries")
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+    }
 
-    if (error) throw error;
+    // 対応するsettle_entryがあれば連動更新
+    const needsSettleUpdate =
+      updates.amount !== undefined || updates.date !== undefined || body.forWhom !== undefined;
 
-    // 対応するsettle_entryがあれば連動更新（amount・dateが変わった場合のみ影響）
-    if (updates.amount !== undefined || updates.date !== undefined) {
+    if (needsSettleUpdate) {
       const { data: settle } = await supabase
         .from("settle_entries")
         .select("id, meta, delta, date")
@@ -48,21 +52,34 @@ export async function POST(req: Request) {
         .maybeSingle();
 
       if (settle) {
-        const { payer, forWhom } = settle.meta ?? {};
-        const newAmt = updates.amount ?? 0;
+        const payer: string = settle.meta?.payer ?? "";
+        const currentForWhom: string = settle.meta?.forWhom ?? "";
+        const newForWhom: string =
+          body.forWhom !== undefined ? String(body.forWhom) : currentForWhom;
         const settleUpdates: Record<string, any> = {};
 
         if (updates.date !== undefined) {
           settleUpdates.date = updates.date;
         }
 
-        if (updates.amount !== undefined && payer && forWhom) {
+        if (
+          (updates.amount !== undefined || body.forWhom !== undefined) &&
+          payer
+        ) {
+          // 現在の金額：amountが更新されていればそれ、なければsettleから逆算
+          const baseAmt = updates.amount ?? (() => {
+            // deltaからamount逆算
+            if (currentForWhom === "共有") return Math.abs(Number(settle.delta)) * 2;
+            return Math.abs(Number(settle.delta));
+          })();
           let newDelta = 0;
-          if (payer === "なつ" && forWhom === "たか") newDelta = newAmt;
-          if (payer === "たか" && forWhom === "なつ") newDelta = -newAmt;
-          if (payer === "なつ" && forWhom === "共有") newDelta = Math.round(newAmt * 0.5);
-          if (payer === "たか" && forWhom === "共有") newDelta = -Math.round(newAmt * 0.5);
+          if (payer === "なつ" && newForWhom === "たか") newDelta = baseAmt;
+          if (payer === "たか" && newForWhom === "なつ") newDelta = -baseAmt;
+          if (payer === "なつ" && newForWhom === "共有") newDelta = Math.round(baseAmt * 0.5);
+          if (payer === "たか" && newForWhom === "共有") newDelta = -Math.round(baseAmt * 0.5);
+          if (newForWhom === payer) newDelta = 0; // 自分のため → 精算なし
           settleUpdates.delta = newDelta;
+          settleUpdates.meta = { ...settle.meta, forWhom: newForWhom };
         }
 
         if (Object.keys(settleUpdates).length > 0) {

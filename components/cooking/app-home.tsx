@@ -34,6 +34,8 @@ type KakeiboEntry = {
   entry_type: "expense" | "income";
   expense?: string | null;
   note?: string;
+  payer?: string | null;
+  forWhom?: string | null;
 };
 
 type UseLogEntry = {
@@ -113,6 +115,7 @@ function sourceLabel(source: string) {
   if (source === "payment") return "支出";
   if (source === "food_use" || source === "food.use" || source === "food_use_group") return "食材使用";
   if (source === "food_use_correction" || source === "food.use_correction") return "修正";
+  if (source === "manual") return "手動精算";
   return source;
 }
 
@@ -247,7 +250,16 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     amount: string;
     category: string;
     note: string;
+    forWhom: string;
   } | null>(null);
+
+  // 精算手動追加
+  const [settleAddOpen, setSettleAddOpen] = useState(false);
+  const [settleAddAmount, setSettleAddAmount] = useState("");
+  const [settleAddDate, setSettleAddDate] = useState("");
+  const [settleAddPayer, setSettleAddPayer] = useState<"なつ" | "たか">("なつ");
+  const [settleAddNote, setSettleAddNote] = useState("");
+  const [settleAddOut, setSettleAddOut] = useState("");
 
   // 家計簿専用owner（LIFFが有効な場合はLIFF優先、未認証時は手動トグル）
   const kakeiboOwnerJa = liffOwner ?? ownerJa;
@@ -333,6 +345,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
     if (!settleMonthKey) setSettleMonthKey(monthKey);
     if (!kakeiboMonthKey) setKakeiboMonthKey(monthKey);
     if (!useHistoryMonthKey) setUseHistoryMonthKey(monthKey);
+    if (!settleAddDate) setSettleAddDate(today);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -795,6 +808,17 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               size="sm"
               variant="outline"
               className="shrink-0 rounded-2xl border-emerald-200 bg-white"
+              onClick={() => {
+                setSettleAddOpen((v) => !v);
+                setSettleAddOut("");
+              }}
+            >
+              {settleAddOpen ? "キャンセル" : "＋ 精算を追加"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 rounded-2xl border-emerald-200 bg-white"
               onClick={async () => {
                 if (!settleDetailOpen) {
                   await loadSettleDetail();
@@ -805,6 +829,89 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
               {settleDetailOpen ? "閉じる" : "詳細を見る"}
             </Button>
           </div>
+          {settleAddOpen && (
+            <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+              <div className="mb-2 text-xs font-bold text-emerald-700">手動精算を追加（家計簿には影響しません）</div>
+              <div className="grid gap-2">
+                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
+                  <span className="w-16 text-sm text-slate-600">日付</span>
+                  <Input
+                    type="date"
+                    className="w-full min-w-0"
+                    value={settleAddDate}
+                    onChange={(e) => setSettleAddDate(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
+                  <span className="w-16 text-sm text-slate-600">金額（円）</span>
+                  <Input
+                    inputMode="numeric"
+                    placeholder="例：1000"
+                    value={settleAddAmount}
+                    onChange={(e) => setSettleAddAmount(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
+                  <span className="w-16 text-sm text-slate-600">誰が払う</span>
+                  <select
+                    className="w-full rounded-2xl border px-3 py-2 text-sm"
+                    value={settleAddPayer}
+                    onChange={(e) => setSettleAddPayer(e.target.value as any)}
+                  >
+                    <option value="なつ">なつ</option>
+                    <option value="たか">たか</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
+                  <span className="w-16 text-sm text-slate-600">備考</span>
+                  <Input
+                    placeholder="任意"
+                    value={settleAddNote}
+                    onChange={(e) => setSettleAddNote(e.target.value)}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="mt-1 rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+                  onClick={async () => {
+                    setSettleAddOut("送信中");
+                    try {
+                      const amount = Number(settleAddAmount);
+                      if (!Number.isFinite(amount) || amount <= 0) {
+                        setSettleAddOut("ERROR: 金額が不正");
+                        return;
+                      }
+                      if (!settleAddDate) {
+                        setSettleAddOut("ERROR: 日付が未入力");
+                        return;
+                      }
+                      // なつが払う → delta = +amount（たかがなつに返すべき増）
+                      // たかが払う → delta = -amount（なつがたかに返すべき増）
+                      const delta = settleAddPayer === "なつ" ? amount : -amount;
+                      await apiPost("/api/settle/add", {
+                        delta,
+                        date: settleAddDate,
+                        note: settleAddNote,
+                      });
+                      setSettleAddOpen(false);
+                      setSettleAddAmount("");
+                      setSettleAddNote("");
+                      setSettleAddOut("");
+                      await loadSettle();
+                      if (settleDetailOpen) await loadSettleDetail();
+                    } catch (e: any) {
+                      setSettleAddOut(String(e?.message ?? e));
+                    }
+                  }}
+                >
+                  追加する
+                </Button>
+                {settleAddOut && (
+                  <div className="text-xs text-red-600">{settleAddOut}</div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="mt-3 text-lg font-extrabold">{settleMessage(settleTotal)}</div>
           {settleDetailOpen && (
             <div className="mt-3">
@@ -1871,6 +1978,21 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                               onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, note: e.target.value } : v)}
                             />
                           </Field>
+                          {entry.entry_type === "expense" && entry.forWhom && (
+                            <Field label="誰のため？" className="md:col-span-2">
+                              <select
+                                className="w-full rounded-2xl border px-3 py-2"
+                                value={kakeiboEditValues?.forWhom ?? ""}
+                                onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, forWhom: e.target.value } : v)}
+                              >
+                                <option value={entry.payer ?? ""}>自分（{entry.payer}）</option>
+                                <option value={entry.payer === "なつ" ? "たか" : "なつ"}>
+                                  {entry.payer === "なつ" ? "たか" : "なつ"}のため
+                                </option>
+                                <option value="共有">共有</option>
+                              </select>
+                            </Field>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <Button
@@ -1891,6 +2013,9 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                   amount: Math.abs(Number(kakeiboEditValues?.amount)),
                                   category: kakeiboEditValues?.category,
                                   note: kakeiboEditValues?.note,
+                                  ...(entry.entry_type === "expense" && entry.forWhom
+                                    ? { forWhom: kakeiboEditValues?.forWhom }
+                                    : {}),
                                 });
                                 setKakeiboEditId(null);
                                 setKakeiboEditValues(null);
@@ -1907,11 +2032,26 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                     ) : (
                       <div>
                         <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-extrabold">{entry.item}</span>
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                               {entry.category}
                             </span>
+                            {entry.entry_type === "expense" && entry.forWhom && (
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                                entry.forWhom === "共有"
+                                  ? "bg-sky-50 text-sky-700"
+                                  : entry.forWhom === entry.payer
+                                  ? "bg-slate-50 text-slate-500"
+                                  : "bg-amber-50 text-amber-700"
+                              }`}>
+                                {entry.forWhom === entry.payer
+                                  ? "自分のため"
+                                  : entry.forWhom === "共有"
+                                  ? "共有"
+                                  : `${entry.forWhom}のため`}
+                              </span>
+                            )}
                           </div>
                           <span className="text-base font-extrabold text-emerald-800">
                             {Math.abs(entry.amount).toLocaleString()} 円
@@ -1933,6 +2073,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                                 amount: String(Math.abs(entry.amount)),
                                 category: entry.category,
                                 note: entry.note ?? "",
+                                forWhom: entry.forWhom ?? "",
                               });
                             }}
                           >
