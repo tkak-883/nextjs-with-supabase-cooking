@@ -175,7 +175,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
   const [payDate, setPayDate] = useState<string>("");
   const [payAmount, setPayAmount] = useState<string>("");
   const [payPayer, setPayPayer] = useState<"なつ" | "たか">("なつ");
-  const [payForWhom, setPayForWhom] = useState<"なつ" | "たか" | "共有">("共有");
+  const [payForWhom, setPayForWhom] = useState<"自分" | "相手" | "共有">("自分");
   const [payNote, setPayNote] = useState("");
   const [payOut, setPayOut] = useState<string>("");
 
@@ -465,13 +465,16 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         setPayOut("ERROR: 金額が不正");
         return;
       }
+      const other = payPayer === "なつ" ? "たか" : "なつ";
+      const resolvedForWhom: "なつ" | "たか" | "共有" =
+        payForWhom === "自分" ? payPayer : payForWhom === "相手" ? other : "共有";
       const oldSettle = settleTotal;
       await apiPost<any>("/api/payment/add", {
         category: payCategory,
         date: payDate,
         amount,
         payer: payPayer,
-        forWhom: payForWhom,
+        forWhom: resolvedForWhom,
         note: payNote,
       });
       const newSettle = await loadSettle();
@@ -481,7 +484,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
         date: payDate,
         amount,
         payer: payPayer,
-        forWhom: payForWhom,
+        forWhom: resolvedForWhom,
         note: payNote,
         settleDelta: newSettle - oldSettle,
       });
@@ -920,15 +923,15 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                       <option>たか</option>
                     </select>
                   </Field>
-                  <Field label="誰の家（or共有）用？">
+                  <Field label="誰のため？">
                     <select
                       className="w-full rounded-2xl border px-3 py-2"
                       value={payForWhom}
                       onChange={(e) => setPayForWhom(e.target.value as any)}
                     >
-                      <option>なつ</option>
-                      <option>たか</option>
-                      <option>共有</option>
+                      <option value="自分">自分</option>
+                      <option value="相手">{payPayer === "なつ" ? "たか" : "なつ"}</option>
+                      <option value="共有">共有</option>
                     </select>
                   </Field>
                 </div>
