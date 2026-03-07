@@ -1838,6 +1838,7 @@ export default function AppHome({ initialTab = "payment" }: { initialTab?: TabKe
                           <Field label="日付">
                             <Input
                               type="date"
+                              className="w-full min-w-0"
                               value={kakeiboEditValues?.date ?? ""}
                               onChange={(e) => setKakeiboEditValues((v) => v ? { ...v, date: e.target.value } : v)}
                             />
