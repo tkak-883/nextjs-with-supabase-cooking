@@ -1,109 +1,175 @@
-<a href="https://demo-nextjs-with-supabase.vercel.app/">
-  <img alt="Next.js and Supabase Starter Kit - the fastest way to build apps with Next.js and Supabase" src="https://demo-nextjs-with-supabase.vercel.app/opengraph-image.png">
-  <h1 align="center">Next.js and Supabase Starter Kit</h1>
-</a>
+# 食材精算アプリ
 
-<p align="center">
- The fastest way to build apps with Next.js and Supabase
-</p>
+2人用の食材管理・支払い記録・月次精算を一元管理するWebアプリです。Next.js + Supabase で構築し、LINEミニアプリUIを想定したモバイルファーストの設計になっています。
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#demo"><strong>Demo</strong></a> ·
-  <a href="#deploy-to-vercel"><strong>Deploy to Vercel</strong></a> ·
-  <a href="#clone-and-run-locally"><strong>Clone and run locally</strong></a> ·
-  <a href="#feedback-and-issues"><strong>Feedback and issues</strong></a>
-  <a href="#more-supabase-examples"><strong>More Examples</strong></a>
-</p>
-<br/>
+## 機能概要
 
-## Features
+| タブ | 機能 |
+|------|------|
+| 支払い | 家計簿への支出・収入記録、精算額の自動計算 |
+| 使用 | 在庫からの食材使用記録、残量の自動更新 |
+| 食材 | 食材の追加・修正・削除・復元（在庫管理） |
+| 家計簿 | 月別の支出・収入一覧と集計 |
 
-- Works across the entire [Next.js](https://nextjs.org) stack
-  - App Router
-  - Pages Router
-  - Proxy
-  - Client
-  - Server
-  - It just works!
-- supabase-ssr. A package to configure Supabase Auth to use cookies
-- Password-based authentication block installed via the [Supabase UI Library](https://supabase.com/ui/docs/nextjs/password-based-auth)
-- Styling with [Tailwind CSS](https://tailwindcss.com)
-- Components with [shadcn/ui](https://ui.shadcn.com/)
-- Optional deployment with [Supabase Vercel Integration and Vercel deploy](#deploy-your-own)
-  - Environment variables automatically assigned to Vercel project
+### 精算ロジック
 
-## Demo
+- 一方が食材を購入した場合、もう一方が「使用」することで使用量 × 単価が精算差分として計算される
+- 支払いタブで立替記録をすると、精算額に反映される
+- 月別の精算状況をまとめて確認できる
 
-You can view a fully working demo at [demo-nextjs-with-supabase.vercel.app](https://demo-nextjs-with-supabase.vercel.app/).
+## 技術スタック
 
-## Deploy to Vercel
+- **フロントエンド**: Next.js 19 (App Router) + TypeScript
+- **UI**: Tailwind CSS + shadcn/ui + Radix UI
+- **データベース**: Supabase (PostgreSQL)
+- **API**: Next.js Route Handlers
+- **LINE連携**: LINE LIFF SDK（設定対応済み）
+- **デプロイ**: Vercel 対応
 
-Vercel deployment will guide you through creating a Supabase account and project.
+## データベース構造
 
-After installation of the Supabase integration, all relevant environment variables will be assigned to the project so the deployment is fully functioning.
+### `food_items` — 現役の食材
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&project-name=nextjs-with-supabase&repository-name=nextjs-with-supabase&demo-title=nextjs-with-supabase&demo-description=This+starter+configures+Supabase+Auth+to+use+cookies%2C+making+the+user%27s+session+available+throughout+the+entire+Next.js+app+-+Client+Components%2C+Server+Components%2C+Route+Handlers%2C+Server+Actions+and+Middleware.&demo-url=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2F&external-id=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&demo-image=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2Fopengraph-image.png)
+| カラム | 型 | 説明 |
+|--------|----|------|
+| owner | text | 購入者（natsu / taka） |
+| item_id | text | ユニークID |
+| name | text | 食材名 |
+| price | numeric | 購入総額 |
+| volume | numeric | 内容量 |
+| unit | text | 単位 |
+| remain | numeric | 残量 |
+| amount_per_unit | numeric | 単価（price / volume） |
+| purchase_date | date | 購入日 |
+| note | text | 備考 |
 
-The above will also clone the Starter kit to your GitHub, you can clone that locally and develop locally.
+### `food_deleted` — 削除済みの食材
 
-If you wish to just develop locally and not deploy to Vercel, [follow the steps below](#clone-and-run-locally).
+food_items と同様のカラム構成に加えて `delete_date`（削除日）を持つ。復元機能で food_items に戻せる。
 
-## Clone and run locally
+### `kakeibo_entries` — 家計簿記録
 
-1. You'll first need a Supabase project which can be made [via the Supabase dashboard](https://database.new)
+| カラム | 型 | 説明 |
+|--------|----|------|
+| id | uuid | プライマリキー |
+| owner | text | 記録者 |
+| item | text | 品目・カテゴリ名 |
+| date | date | 日付 |
+| amount | numeric | 金額 |
+| entry_type | text | expense / income |
+| expense | text | 支出者 |
+| for_whom | text | 誰のための支出か |
+| note | text | メモ |
 
-2. Create a Next.js app using the Supabase Starter template npx command
+### `settle_entries` — 精算履歴
 
-   ```bash
-   npx create-next-app --example with-supabase with-supabase-app
-   ```
+| カラム | 型 | 説明 |
+|--------|----|------|
+| id | uuid | プライマリキー |
+| date | date | 日付 |
+| delta | numeric | 精算差分（正: natsu→taka、負: taka→natsu） |
+| source | text | payment / food.use / manual |
+| meta | jsonb | 元データの参照情報 |
 
-   ```bash
-   yarn create next-app --example with-supabase with-supabase-app
-   ```
+### `food_use_logs` — 食材使用履歴
 
-   ```bash
-   pnpm create next-app --example with-supabase with-supabase-app
-   ```
+| カラム | 型 | 説明 |
+|--------|----|------|
+| id | uuid | プライマリキー |
+| owner | text | 使用者 |
+| use_date | date | 使用日 |
+| item_id | text | 食材ID |
+| item_name | text | 食材名（スナップショット） |
+| use_amount | numeric | 使用量 |
+| amount_per_unit | numeric | 単価（スナップショット） |
+| unit | text | 単位 |
+| settle_delta | numeric | 精算差分 |
 
-3. Use `cd` to change into the app's directory
+## API エンドポイント
 
-   ```bash
-   cd with-supabase-app
-   ```
+### 支払い
+| メソッド | パス | 説明 |
+|----------|------|------|
+| POST | `/api/payment/add` | 支払い記録・家計簿追加・精算更新 |
 
-4. Rename `.env.example` to `.env.local` and update the following:
+### 食材管理
+| メソッド | パス | 説明 |
+|----------|------|------|
+| GET | `/api/food/manage/list` | 食材一覧（月別フィルタ対応） |
+| POST | `/api/food/manage/add` | 食材追加 |
+| PUT | `/api/food/manage/update` | 食材修正 |
+| DELETE | `/api/food/manage/delete` | 食材削除 |
+| POST | `/api/food/manage/restore` | 削除済み食材の復元 |
 
-  ```env
-  NEXT_PUBLIC_SUPABASE_URL=[INSERT SUPABASE PROJECT URL]
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[INSERT SUPABASE PROJECT API PUBLISHABLE OR ANON KEY]
-  ```
-  > [!NOTE]
-  > This example uses `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, which refers to Supabase's new **publishable** key format.
-  > Both legacy **anon** keys and new **publishable** keys can be used with this variable name during the transition period. Supabase's dashboard may show `NEXT_PUBLIC_SUPABASE_ANON_KEY`; its value can be used in this example.
-  > See the [full announcement](https://github.com/orgs/supabase/discussions/29260) for more information.
+### 食材使用
+| メソッド | パス | 説明 |
+|----------|------|------|
+| POST | `/api/food/use` | 食材使用記録・残量更新・精算更新 |
+| GET | `/api/food/use-history` | 使用履歴一覧 |
+| PUT | `/api/food/use-history/update` | 使用履歴修正 |
+| DELETE | `/api/food/use-history/delete` | 使用履歴削除 |
 
-  Both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` can be found in [your Supabase project's API settings](https://supabase.com/dashboard/project/_?showConnect=true)
+### 家計簿
+| メソッド | パス | 説明 |
+|----------|------|------|
+| GET | `/api/kakeibo/list` | 家計簿一覧（月別） |
+| POST | `/api/kakeibo/add` | 家計簿追加 |
+| PUT | `/api/kakeibo/update` | 家計簿修正 |
+| DELETE | `/api/kakeibo/delete` | 家計簿削除 |
 
-5. You can now run the Next.js local development server:
+### 精算
+| メソッド | パス | 説明 |
+|----------|------|------|
+| GET | `/api/settle/list` | 精算一覧 |
+| GET | `/api/settle/get` | 当月精算額取得 |
+| GET | `/api/settle/month` | 月別精算 |
+| POST | `/api/settle/add` | 手動精算追加 |
 
-   ```bash
-   npm run dev
-   ```
+## セットアップ
 
-   The starter kit should now be running on [localhost:3000](http://localhost:3000/).
+### 1. リポジトリのクローン
 
-6. This template comes with the default shadcn/ui style initialized. If you instead want other ui.shadcn styles, delete `components.json` and [re-install shadcn/ui](https://ui.shadcn.com/docs/installation/next)
+```bash
+git clone <このリポジトリのURL>
+cd nextjs-with-supabase-cooking
+npm install
+```
 
-> Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
+### 2. Supabase プロジェクトの作成
 
-## Feedback and issues
+[Supabase](https://supabase.com) でプロジェクトを作成し、上記のテーブルを作成します。
 
-Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
+### 3. 環境変数の設定
 
-## More Supabase examples
+`.env.local` を作成し、以下を設定します：
 
-- [Next.js Subscription Payments Starter](https://github.com/vercel/nextjs-subscription-payments)
-- [Cookie-based Auth and the Next.js 13 App Router (free course)](https://youtube.com/playlist?list=PL5S4mPUpp4OtMhpnp93EFSo42iQ40XjbF)
-- [Supabase Auth and the Next.js App Router](https://github.com/supabase/supabase/tree/master/examples/auth/nextjs)
+```env
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# LINE LIFF連携（任意）
+NEXT_PUBLIC_LIFF_ID=your-liff-id
+NEXT_PUBLIC_LIFF_NATSU_USER_ID=line-user-id-for-natsu
+NEXT_PUBLIC_LIFF_TAKA_USER_ID=line-user-id-for-taka
+```
+
+### 4. 開発サーバーの起動
+
+```bash
+npm run dev
+```
+
+`http://localhost:3000` でアクセスできます。
+
+## デプロイ（Vercel）
+
+1. Vercel にリポジトリを接続
+2. 環境変数を Vercel のプロジェクト設定に追加
+3. デプロイ実行
+
+## 注意事項
+
+- 現在は Supabase の Admin Client（Service Role Key）を使用しているため、**本番運用前に RLS（Row Level Security）の設定を推奨します**
+- LINE LIFF 統合は環境変数の準備が済んでいますが、本格的な統合は未実装です
